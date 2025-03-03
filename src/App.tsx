@@ -5,11 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner"
+import spacecatLogo from "./assets/spacecat-white.svg";
+
 import { 
   Settings, 
   FolderOpen, 
@@ -20,43 +22,48 @@ import {
   ChevronLeft, 
   ChevronRight,
   Trash,
-  Copy,
   Wand2,
-  Save
+  Info,
+  Bot
 } from "lucide-react";
-
-// Types
-interface MediaFile {
-  id: string;
-  name: string;
-  path: string;
-  type: 'image' | 'video';
-  hasCaption: boolean;
-  selected: boolean;
-  thumbnail?: string;
-}
-
-interface AppSettings {
-  apiUrl: string;
-  apiKey: string;
-  captionPrompt: string;
-}
+import { useFileSystem } from "@/hooks/useFileSystem";
+import { useSettings } from "@/hooks/useSettings";
+import { MediaFile } from "@/lib/fs";
+import { generateCaption, generateCaptions } from "@/lib/api";
+import { ImageDetailLevel } from "@/lib/settings";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 function App() {
+  // Initialize hooks
+  const {
+    sourceDirectory,
+    workingDirectory,
+    mediaFiles,
+    isLoading,
+    error,
+    selectSourceDirectory,
+    readCaption,
+    writeCaption,
+    getThumbnail,
+    getMediaUrl,
+    updateFileSelection
+  } = useFileSystem();
+  
+  const {
+    settings,
+    updateSettings,
+    updateSingleSetting
+  } = useSettings();
+
   // State
-  const [workingDirectory, setWorkingDirectory] = useState<string | null>(null);
-  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [currentFile, setCurrentFile] = useState<MediaFile | null>(null);
   const [caption, setCaption] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [captionModified, setCaptionModified] = useState<boolean>(false);
-  const [settings, setSettings] = useState<AppSettings>({
-    apiUrl: 'https://api.openai.com/v1/chat/completions',
-    apiKey: '',
-    captionPrompt: 'Describe this image in detail:'
-  });
   const [fileFilter, setFileFilter] = useState<'all' | 'captioned' | 'uncaptioned'>('all');
+  const [loadingThumbnails, setLoadingThumbnails] = useState<boolean>(false);
 
   // Auto-save caption when modified (with debounce)
   useEffect(() => {
@@ -70,21 +77,52 @@ function App() {
     return () => clearTimeout(timer);
   }, [caption, captionModified]);
 
+  // Load thumbnails for visible files
+  useEffect(() => {
+    if (mediaFiles.length === 0 || loadingThumbnails) return;
+    
+    const loadThumbnails = async () => {
+      setLoadingThumbnails(true);
+      
+      // Only load thumbnails for image files that don't have them yet
+      const imagesToProcess = mediaFiles
+        .filter(file => (file.type === 'image' || file.file_type === 'image') && !file.thumbnail)
+        .slice(0, 20); // Process in batches to avoid overwhelming the system
+      
+      if (imagesToProcess.length === 0) {
+        setLoadingThumbnails(false);
+        return;
+      }
+      
+      // Process thumbnails in parallel
+      await Promise.all(
+        imagesToProcess.map(async (file) => {
+          try {
+            const thumbnail = await getThumbnail(file);
+            if (thumbnail) {
+              // Update the file with the thumbnail
+              updateFileSelection(file.id, file.selected || false, thumbnail);
+            }
+          } catch (err) {
+            console.error(`Failed to load thumbnail for ${file.name}:`, err);
+          }
+        })
+      );
+      
+      setLoadingThumbnails(false);
+    };
+    
+    loadThumbnails();
+  }, [mediaFiles, loadingThumbnails, getThumbnail, updateFileSelection]);
+
   // Save caption function
-  const saveCaption = useCallback(() => {
+  const saveCaption = useCallback(async () => {
     if (!currentFile) return;
     
     setIsSaving(true);
     
-    // In a real app, this would save to a file
-    console.log(`Auto-saving caption for ${currentFile.name}: ${caption}`);
-    
-    // Simulate a brief save operation
-    setTimeout(() => {
-      setMediaFiles(prev => 
-        prev.map(f => f.id === currentFile.id ? { ...f, hasCaption: caption.trim().length > 0 } : f)
-      );
-      setIsSaving(false);
+    try {
+      await writeCaption(currentFile, caption);
       
       // Only show toast for manual saves
       if (captionModified === false) {
@@ -92,47 +130,53 @@ function App() {
           description: `Caption saved for ${currentFile.name}`,
         });
       }
-    }, 300);
-  }, [currentFile, caption, captionModified, toast]);
-
-  // Mock function to select a directory
-  const handleSelectDirectory = () => {
-    // In a real app, this would use the Tauri API to select a directory
-    // For now, we'll mock this with some sample data
-    setWorkingDirectory('/Users/example/Pictures');
-    
-    // Mock loading some files
-    const mockFiles: MediaFile[] = Array.from({ length: 50 }, (_, i) => ({
-      id: `file-${i}`,
-      name: `image${i.toString().padStart(3, '0')}.${i % 3 === 0 ? 'jpg' : 'png'}`,
-      path: `/Users/example/Pictures/image${i.toString().padStart(3, '0')}.${i % 3 === 0 ? 'jpg' : 'png'}`,
-      type: i % 5 === 0 ? 'video' : 'image',
-      hasCaption: i % 4 === 0,
-      selected: false,
-      thumbnail: `https://source.unsplash.com/random/100x100?sig=${i}`
-    }));
-    
-    setMediaFiles(mockFiles);
-    if (mockFiles.length > 0) {
-      setCurrentFile(mockFiles[0]);
-      // Mock loading a caption
-      if (mockFiles[0].hasCaption) {
-        setCaption('This is a sample caption for the first image.');
-      } else {
-        setCaption('');
-      }
+    } catch (err) {
+      toast("Error", {
+        description: `Failed to save caption: ${err}`
+      });
+    } finally {
+      setIsSaving(false);
     }
-    
-    toast("Directory loaded", {
-      description: `Loaded ${mockFiles.length} media files from the selected directory.`,
-    });
+  }, [currentFile, caption, captionModified, writeCaption]);
+
+  // Handle directory selection
+  const handleSelectDirectory = async () => {
+    try {
+      toast.promise(
+        selectSourceDirectory(),
+        {
+          loading: 'Selecting directory...',
+          success: (result) => {
+            const { files, sourceDirectory, workingDirectory } = result;
+            
+            if (files.length > 0) {
+              setCurrentFile(files[0]);
+              
+              // Load caption if it exists
+              if (files[0].has_caption) {
+                readCaption(files[0]).then(captionText => {
+                  setCaption(captionText);
+                });
+              } else {
+                setCaption('');
+              }
+            }
+            
+            return `Loaded ${files.length} media files from ${sourceDirectory}`;
+          },
+          error: (err) => `Failed to load directory: ${err}`
+        }
+      );
+    } catch (err) {
+      // Error is handled by toast.promise
+    }
   };
 
   // Handle file selection
-  const handleFileSelect = (file: MediaFile) => {
+  const handleFileSelect = async (file: MediaFile) => {
     // Auto-save current caption if needed
     if (currentFile && captionModified) {
-      saveCaption();
+      await writeCaption(currentFile, caption);
       setCaptionModified(false);
     }
     
@@ -140,9 +184,9 @@ function App() {
     setCurrentFile(file);
     
     // Load caption if it exists
-    if (file.hasCaption) {
-      // In a real app, this would load from a file
-      setCaption(`This is a sample caption for ${file.name}.`);
+    if (file.has_caption) {
+      const captionText = await readCaption(file);
+      setCaption(captionText);
     } else {
       setCaption('');
     }
@@ -150,9 +194,7 @@ function App() {
 
   // Handle checkbox selection
   const handleCheckboxChange = (file: MediaFile, checked: boolean) => {
-    setMediaFiles(prev => 
-      prev.map(f => f.id === file.id ? { ...f, selected: checked } : f)
-    );
+    updateFileSelection(file.id, checked);
   };
 
   // Handle caption change
@@ -173,27 +215,59 @@ function App() {
     
     setIsProcessing(true);
     
-    // In a real app, this would call the OpenAI API for each file
-    setTimeout(() => {
-      setMediaFiles(prev => 
-        prev.map(f => f.selected ? { ...f, hasCaption: true, selected: false } : f)
-      );
-      
-      setIsProcessing(false);
-      
-      toast("Captions generated", {
-        description: `Generated captions for ${selectedFiles.length} files.`,
-      });
-    }, 2000);
+    // Get the paths of the selected files
+    const imagePaths = selectedFiles.map(file => file.path);
+    
+    // Call the API to generate captions
+    toast.promise(
+      generateCaptions(
+        settings.apiUrl,
+        settings.apiKey,
+        settings.captionPrompt,
+        imagePaths,
+        settings.model,
+        settings.imageDetail,
+        settings.useDetailParameter
+      ),
+      {
+        loading: `Generating captions for ${selectedFiles.length} files using ${settings.model}...`,
+        success: (results) => {
+          // Update the captions for each file
+          results.forEach(([path, caption]) => {
+            const file = mediaFiles.find(f => f.path === path);
+            if (file) {
+              writeCaption(file, caption)
+                .catch(err => console.error(`Failed to save caption for ${file.name}:`, err));
+            }
+          });
+          
+          // If the current file was one of the selected files, update its caption
+          if (currentFile && selectedFiles.some(f => f.id === currentFile.id)) {
+            const result = results.find(([path]) => path === currentFile.path);
+            if (result) {
+              setCaption(result[1]);
+              setCaptionModified(true);
+            }
+          }
+          
+          setIsProcessing(false);
+          return `Generated captions for ${results.length} files`;
+        },
+        error: (err) => {
+          setIsProcessing(false);
+          return `Failed to generate captions: ${err}`;
+        }
+      }
+    );
   };
 
   // Handle navigation
-  const handleNavigate = (direction: 'prev' | 'next') => {
+  const handleNavigate = async (direction: 'prev' | 'next') => {
     if (!currentFile || mediaFiles.length === 0) return;
     
     // Auto-save current caption if needed
     if (captionModified) {
-      saveCaption();
+      await writeCaption(currentFile, caption);
       setCaptionModified(false);
     }
     
@@ -210,9 +284,9 @@ function App() {
     setCurrentFile(newFile);
     
     // Load caption if it exists
-    if (newFile.hasCaption) {
-      // In a real app, this would load from a file
-      setCaption(`This is a sample caption for ${newFile.name}.`);
+    if (newFile.has_caption) {
+      const captionText = await readCaption(newFile);
+      setCaption(captionText);
     } else {
       setCaption('');
     }
@@ -224,24 +298,38 @@ function App() {
     
     setIsProcessing(true);
     
-    // Mock API call
-    setTimeout(() => {
-      const generatedCaption = "A sample AI-generated caption for this media file.";
-      setCaption(generatedCaption);
-      setCaptionModified(true);
-      setIsProcessing(false);
-      
-      toast("Caption generated", {
-        description: "AI caption generated successfully.",
-      });
-    }, 1000);
+    // Call the API to generate a caption
+    toast.promise(
+      generateCaption(
+        settings.apiUrl,
+        settings.apiKey,
+        settings.captionPrompt,
+        currentFile.path,
+        settings.model,
+        settings.imageDetail,
+        settings.useDetailParameter
+      ),
+      {
+        loading: `Generating caption using ${settings.model}...`,
+        success: (caption) => {
+          setCaption(caption);
+          setCaptionModified(true);
+          setIsProcessing(false);
+          return "Caption generated successfully";
+        },
+        error: (err) => {
+          setIsProcessing(false);
+          return `Failed to generate caption: ${err}`;
+        }
+      }
+    );
   };
 
   // Filter files based on the current tab
   const filteredFiles = mediaFiles.filter(file => {
     if (fileFilter === 'all') return true;
-    if (fileFilter === 'captioned') return file.hasCaption;
-    if (fileFilter === 'uncaptioned') return !file.hasCaption;
+    if (fileFilter === 'captioned') return file.has_caption;
+    if (fileFilter === 'uncaptioned') return !file.has_caption;
     return true;
   });
 
@@ -262,13 +350,13 @@ function App() {
       }
       
       // Navigation
-      if (e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowLeft' && e.shiftKey) {
         handleNavigate('prev');
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowRight' && e.shiftKey) {
         handleNavigate('next');
       } 
       // Generate caption
-      else if (e.key === 'g') {
+      else if (e.key === 'g' && e.shiftKey) {
         handleGenerateCurrentCaption();
       }
     };
@@ -280,11 +368,10 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b border-border">
+      <header className="flex items-center justify-between p-2 mx-2 border-b border-border">
         <div className="flex items-center gap-2">
-          <ImageIcon className="h-6 w-6" />
-          <h1 className="text-xl font-bold">Media Caption Manager</h1>
-          <span className="text-xs bg-secondary px-2 py-0.5 rounded-md">alpha</span>
+          <img src={spacecatLogo} alt="Logo" className="h-10 w-10" />
+          <h1 className="text-xl font-bold">spacecat caption</h1>
         </div>
         
         <div className="flex items-center gap-2">
@@ -302,35 +389,151 @@ function App() {
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="apiUrl">API URL</Label>
-                  <Input 
-                    id="apiUrl" 
-                    value={settings.apiUrl} 
-                    onChange={(e) => setSettings({...settings, apiUrl: e.target.value})}
-                  />
-                </div>
+              <Tabs defaultValue="general">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="general">General</TabsTrigger>
+                  <TabsTrigger value="shortcuts">Keyboard Shortcuts</TabsTrigger>
+                </TabsList>
                 
-                <div className="grid gap-2">
-                  <Label htmlFor="apiKey">API Key</Label>
-                  <Input 
-                    id="apiKey" 
-                    type="password" 
-                    value={settings.apiKey} 
-                    onChange={(e) => setSettings({...settings, apiKey: e.target.value})}
-                  />
-                </div>
+                <TabsContent value="general" className="mt-4">
+                  <div className="grid gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="apiUrl">API URL</Label>
+                      <Input 
+                        id="apiUrl" 
+                        value={settings.apiUrl} 
+                        onChange={(e) => updateSingleSetting('apiUrl', e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="apiKey">API Key</Label>
+                      <Input 
+                        id="apiKey" 
+                        type="password" 
+                        value={settings.apiKey} 
+                        onChange={(e) => updateSingleSetting('apiKey', e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="model">Model</Label>
+                      <Input 
+                        id="model" 
+                        value={settings.model} 
+                        onChange={(e) => updateSingleSetting('model', e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Recommended models: gpt-4o-2024-05-13, gpt-4o
+                      </p>
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="imageDetail">Image Detail Level</Label>
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                              <Info className="h-3 w-3" />
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-80">
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-semibold">Image Detail Levels</h4>
+                              <p className="text-xs">
+                                <strong>auto:</strong> The model decides based on image size
+                              </p>
+                              <p className="text-xs">
+                                <strong>low:</strong> Uses a 512px x 512px version (85 tokens)
+                              </p>
+                              <p className="text-xs">
+                                <strong>high:</strong> First uses low-res, then creates detailed crops (255 tokens)
+                              </p>
+                              <p className="text-xs mt-2">
+                                Higher detail means better image understanding but uses more tokens.
+                              </p>
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      </div>
+                      <Select 
+                        value={settings.imageDetail} 
+                        onValueChange={(value: string) => updateSingleSetting('imageDetail', value as ImageDetailLevel)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select detail level" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto</SelectItem>
+                          <SelectItem value="low">Low</SelectItem>
+                          <SelectItem value="high">High</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="useDetailParameter" 
+                        checked={settings.useDetailParameter}
+                        onCheckedChange={(checked) => 
+                          updateSingleSetting('useDetailParameter', checked === true)
+                        }
+                      />
+                      <Label 
+                        htmlFor="useDetailParameter" 
+                        className="text-sm font-normal"
+                      >
+                        Include detail parameter in API requests
+                      </Label>
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="captionPrompt">Caption Prompt</Label>
+                      <Textarea 
+                        id="captionPrompt" 
+                        value={settings.captionPrompt} 
+                        onChange={(e) => updateSingleSetting('captionPrompt', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
                 
-                <div className="grid gap-2">
-                  <Label htmlFor="captionPrompt">Caption Prompt</Label>
-                  <Textarea 
-                    id="captionPrompt" 
-                    value={settings.captionPrompt} 
-                    onChange={(e) => setSettings({...settings, captionPrompt: e.target.value})}
-                  />
-                </div>
-              </div>
+                <TabsContent value="shortcuts" className="mt-4">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Navigation</h3>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center">
+                          <kbd className="px-2 py-1 bg-muted rounded text-xs">Shift</kbd>
+                          <span className="mx-1">+</span>
+                          <kbd className="px-2 py-1 bg-muted rounded text-xs">←</kbd>
+                        </div>
+                        <span>Previous image</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center">
+                          <kbd className="px-2 py-1 bg-muted rounded text-xs">Shift</kbd>
+                          <span className="mx-1">+</span>
+                          <kbd className="px-2 py-1 bg-muted rounded text-xs">→</kbd>
+                        </div>
+                        <span>Next image</span>
+                      </div>
+                    </div>
+                    
+                    <Separator className="my-4" />
+                    
+                    <h3 className="text-sm font-medium">Actions</h3>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center">
+                          <kbd className="px-2 py-1 bg-muted rounded text-xs">Shift</kbd>
+                          <span className="mx-1">+</span>
+                          <kbd className="px-2 py-1 bg-muted rounded text-xs">G</kbd>
+                        </div>
+                        <span>Generate caption</span>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
               
               <DialogFooter>
                 <Button type="submit" onClick={() => toast("Settings saved")}>
@@ -353,33 +556,46 @@ function App() {
           {/* Directory selection */}
           {!workingDirectory ? (
             <div className="flex-1 flex items-center justify-center p-4">
-              <Button onClick={handleSelectDirectory} className="flex items-center gap-2">
-                <FolderOpen className="h-4 w-4" />
-                Select Directory
+              <Button 
+                onClick={handleSelectDirectory} 
+                className="flex items-center gap-2"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FolderOpen className="h-4 w-4" />
+                )}
+                {isLoading ? 'Loading...' : 'Select Directory'}
               </Button>
             </div>
           ) : (
-            <>
+            <div className="flex flex-col h-full">
               {/* Directory info */}
               <div className="p-4 border-b border-border">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FolderOpen className="h-4 w-4" />
-                    <span className="text-sm font-medium truncate">{workingDirectory}</span>
+                    <span className="text-sm font-medium truncate">{sourceDirectory?.split('/').pop()}</span>
                   </div>
                   <Button 
                     variant="ghost" 
-                    size="icon" 
+                    size="icon"
                     onClick={handleSelectDirectory}
+                    disabled={isLoading}
                   >
-                    <RefreshCw className="h-4 w-4" />
+                    {isLoading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
               
               {/* File tabs */}
               <Tabs defaultValue="all" className="flex flex-col h-[calc(100%-64px)]" onValueChange={(v) => setFileFilter(v as any)}>
-                <div className="m-2 mb-0">
+                <div className="p-2 pb-0">
                   <TabsList className="w-full flex">
                     <TabsTrigger value="all" className="flex-1">All</TabsTrigger>
                     <TabsTrigger value="uncaptioned" className="flex-1">Uncaptioned</TabsTrigger>
@@ -387,67 +603,79 @@ function App() {
                   </TabsList>
                 </div>
                 
-                {/* File list */}
-                <div className="flex-1 overflow-hidden flex flex-col">
-                  <ScrollArea className="flex-1">
-                    <div className="p-2">
-                      {filteredFiles.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-                          <FileText className="h-8 w-8 mb-2" />
-                          <p>No files found</p>
-                        </div>
-                      ) : (
-                        filteredFiles.map((file) => (
-                          <div 
-                            key={file.id}
-                            className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${
-                              currentFile?.id === file.id ? 'bg-secondary' : 'hover:bg-secondary/50'
-                            }`}
-                            onClick={() => handleFileSelect(file)}
-                          >
-                            <Checkbox 
-                              checked={file.selected} 
-                              onCheckedChange={(checked) => {
-                                handleCheckboxChange(file, checked as boolean);
-                                // Prevent the click from selecting the file
-                                event?.stopPropagation();
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            
-                            <div className="h-12 w-12 rounded overflow-hidden flex-shrink-0 bg-muted">
-                              {file.thumbnail && (
-                                <img 
-                                  src={file.thumbnail} 
-                                  alt={file.name} 
-                                  className="h-full w-full object-cover"
-                                />
-                              )}
-                            </div>
-                            
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1">
-                                {file.type === 'image' ? (
-                                  <ImageIcon className="h-3 w-3 text-muted-foreground" />
-                                ) : (
-                                  <Video className="h-3 w-3 text-muted-foreground" />
-                                )}
-                                <p className="text-sm truncate">{file.name}</p>
-                              </div>
-                              {file.hasCaption && (
-                                <p className="text-xs text-muted-foreground truncate">
-                                  Has caption
-                                </p>
-                              )}
-                            </div>
+                {/* File list container */}
+                <div className="flex flex-col h-[calc(100%-48px)]">
+                  {/* Scrollable file list */}
+                  <div className="flex-1 overflow-hidden pb-2">
+                    <ScrollArea className="h-full pr-2">
+                      <div className="p-2">
+                        {isLoading ? (
+                          <div className="flex flex-col items-center justify-center h-40">
+                            <RefreshCw className="h-8 w-8 mb-2 animate-spin text-primary" />
+                            <p>Loading files...</p>
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
+                        ) : filteredFiles.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+                            <FileText className="h-8 w-8 mb-2" />
+                            <p>No files found</p>
+                          </div>
+                        ) : (
+                          filteredFiles.map((file) => (
+                            <div 
+                              key={file.id}
+                              className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${
+                                currentFile?.id === file.id ? 'bg-secondary' : 'hover:bg-secondary/50'
+                              }`}
+                              onClick={() => handleFileSelect(file)}
+                            >
+                              <Checkbox 
+                                checked={file.selected} 
+                                onCheckedChange={(checked) => {
+                                  handleCheckboxChange(file, checked as boolean);
+                                  // Prevent the click from selecting the file
+                                  event?.stopPropagation();
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              
+                              <div className="h-12 w-12 rounded overflow-hidden flex-shrink-0 bg-muted flex items-center justify-center">
+                                {file.thumbnail ? (
+                                  <img 
+                                    src={file.thumbnail} 
+                                    alt={file.name} 
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : file.type === 'image' || file.file_type === 'image' ? (
+                                  <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                                ) : (
+                                  <Video className="h-6 w-6 text-muted-foreground" />
+                                )}
+                              </div>
+                              
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1">
+                                  {file.type === 'image' || file.file_type === 'image' ? (
+                                    <ImageIcon className="h-3 w-3 text-muted-foreground" />
+                                  ) : (
+                                    <Video className="h-3 w-3 text-muted-foreground" />
+                                  )}
+                                  <p className="text-sm truncate">{file.name}</p>
+                                </div>
+                                {file.has_caption && (
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    Has caption
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </div>
                   
-                  {/* Batch actions */}
-                  <div className="p-4 border-t border-border mt-auto">
+                  {/* Generate button - Fixed at the bottom */}
+                  <div className="p-4 border-t border-border sticky bottom-0 bg-background">
                     <Button 
                       className="w-full flex items-center gap-2"
                       onClick={handleGenerateCaptions}
@@ -463,7 +691,7 @@ function App() {
                   </div>
                 </div>
               </Tabs>
-            </>
+            </div>
           )}
         </div>
         
@@ -473,24 +701,26 @@ function App() {
             <>
               {/* Media viewer */}
               <div className="flex-1 flex items-center justify-center p-4 relative overflow-hidden">
-                <div className="relative max-h-full max-w-full">
-                  {currentFile.type === 'image' ? (
+                <div className="relative w-[calc(100vh-20rem)] h-[calc(100vh-20rem)] flex items-center justify-center bg-background rounded-md">
+                  {currentFile.type === 'image' || currentFile.file_type === 'image' ? (
                     <img 
-                      src={currentFile.thumbnail?.replace('100x100', '800x600')} 
+                      src={getMediaUrl(currentFile)} 
                       alt={currentFile.name}
-                      className="max-h-[calc(100vh-16rem)] object-contain rounded-md"
+                      className="max-w-[90%] max-h-[90%] object-contain rounded-md"
                     />
                   ) : (
-                    <div className="bg-muted rounded-md flex items-center justify-center h-[calc(100vh-16rem)] w-[calc(100vh-16rem)]">
-                      <Video className="h-16 w-16 text-muted-foreground" />
-                    </div>
+                    <video 
+                      src={getMediaUrl(currentFile)} 
+                      controls 
+                      className="max-w-[90%] max-h-[90%] object-contain rounded-md"
+                    />
                   )}
                 </div>
                 
                 {/* Navigation buttons */}
                 <Button 
                   variant="secondary" 
-                  size="icon" 
+                  size="icon"
                   className="absolute left-8 top-1/2 transform -translate-y-1/2"
                   onClick={() => handleNavigate('prev')}
                 >
@@ -499,7 +729,7 @@ function App() {
                 
                 <Button 
                   variant="secondary" 
-                  size="icon" 
+                  size="icon"
                   className="absolute right-8 top-1/2 transform -translate-y-1/2"
                   onClick={() => handleNavigate('next')}
                 >
@@ -507,7 +737,7 @@ function App() {
                 </Button>
                 
                 {/* File info */}
-                <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-background/80 backdrop-blur-sm px-4 py-2 rounded-full">
+                <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-background/80 backdrop-blur-sm px-4 py-2 rounded-full">
                   <p className="text-sm">
                     {currentFile.name} • {currentFileIndex} / {mediaFiles.length}
                   </p>
@@ -533,15 +763,7 @@ function App() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-8 px-2 text-xs"
-                        onClick={() => navigator.clipboard.writeText(caption)}
-                      >
-                        <Copy className="h-3 w-3 mr-1" />
-                        Copy
-                      </Button>
+                      
                       
                       <Button 
                         variant="ghost" 
@@ -559,20 +781,6 @@ function App() {
                       <Separator orientation="vertical" className="h-4" />
                       
                       <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="h-8"
-                        onClick={() => {
-                          saveCaption();
-                          setCaptionModified(false);
-                        }}
-                        disabled={isSaving || !captionModified}
-                      >
-                        <Save className="h-3 w-3 mr-1" />
-                        Save
-                      </Button>
-                      
-                      <Button 
                         variant="default" 
                         size="sm" 
                         className="h-8"
@@ -582,7 +790,7 @@ function App() {
                         {isProcessing ? (
                           <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
                         ) : (
-                          <Wand2 className="h-3 w-3 mr-1" />
+                          <Bot className="h-3 w-3 mr-1" />
                         )}
                         Generate
                       </Button>
@@ -600,8 +808,8 @@ function App() {
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>{caption.length} characters</span>
                     <div className="flex gap-4">
-                      <span>Shift + ← → Arrow keys: Navigate</span>
-                      <span>Shift + G: Generate caption</span>
+                      <span>Shift+← Shift+→: Navigate</span>
+                      <span>Shift+G: Generate caption</span>
                     </div>
                   </div>
                 </div>
@@ -619,8 +827,6 @@ function App() {
                 <>
                   <FolderOpen className="h-16 w-16 mb-4" />
                   <h2 className="text-xl font-medium mb-2">No directory selected</h2>
-                  <p className="mb-4">Select a directory to get started.</p>
-                  <Button onClick={handleSelectDirectory}>Select Directory</Button>
                 </>
               )}
             </div>

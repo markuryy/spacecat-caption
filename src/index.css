@@ -130,23 +130,23 @@
     padding: 0;
     text-align: left;
   }
-  
+
   /* Optimize for virtualization */
   .virtual-list {
     will-change: transform;
   }
-  
+
   /* Optimize image rendering */
   img {
     image-rendering: auto;
     backface-visibility: hidden;
   }
-  
+
   /* Improve scrolling performance */
   * {
     -webkit-overflow-scrolling: touch;
   }
-  
+
   /* Prevent text selection for better performance */
   .no-select {
     user-select: none;
