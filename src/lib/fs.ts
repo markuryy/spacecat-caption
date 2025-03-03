@@ -94,3 +94,26 @@ export function getAssetUrl(relativePath: string): string {
 export function getCaptionPath(mediaPath: string): string {
   return mediaPath.replace(/\.[^.]+$/, '.txt');
 }
+
+/**
+ * Select a directory for exporting files
+ * @returns Promise with the selected directory path
+ */
+export async function selectExportDirectory(): Promise<string> {
+  return invoke('select_export_directory');
+}
+
+/**
+ * Export the working directory to a destination
+ * @param sourceDir Source directory path
+ * @param destinationDir Destination directory path
+ * @param asZip Whether to export as a ZIP file
+ * @returns Promise with the path to the exported directory or ZIP file
+ */
+export async function exportDirectory(
+  sourceDir: string,
+  destinationDir: string,
+  asZip: boolean
+): Promise<string> {
+  return invoke('export_directory', { sourceDir, destinationDir, asZip });
+}

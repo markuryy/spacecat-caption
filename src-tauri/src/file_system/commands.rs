@@ -1,10 +1,13 @@
 use fs_extra::dir::CopyOptions;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_fs::FsExt;
+use zip::{write::FileOptions, ZipWriter};
+use chrono::Local;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MediaFile {
@@ -110,6 +113,141 @@ pub async fn write_caption_file(path: String, content: String) -> Result<(), Str
         Ok(_) => Ok(()),
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// Select an export directory using the native file dialog
+#[tauri::command]
+pub async fn select_export_directory(app: AppHandle) -> Result<String, String> {
+    // Use the dialog plugin to select a directory for export
+    let file_path = app.dialog().file().blocking_pick_folder();
+
+    match file_path {
+        Some(path) => Ok(path.to_string()),
+        None => Err("No export directory selected".to_string()),
+    }
+}
+
+/// Export the working directory to a specified destination
+#[tauri::command]
+pub async fn export_directory(
+    source_dir: String,
+    destination_dir: String,
+    as_zip: bool,
+) -> Result<String, String> {
+    // Generate a timestamp for the export directory/file name
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let source_path = Path::new(&source_dir);
+    
+    // Get the source directory name to use as part of the export name
+    let source_name = source_path
+        .file_name()
+        .ok_or_else(|| "Invalid source directory".to_string())?
+        .to_string_lossy();
+    
+    // Create the export name using the timestamp
+    let export_name = format!("spacecat_export_{}_{}", source_name, timestamp);
+    
+    // Create the full destination path
+    let dest_path = Path::new(&destination_dir);
+    
+    if as_zip {
+        // Export as a ZIP file
+        let zip_filename = format!("{}.zip", export_name);
+        let zip_path = dest_path.join(&zip_filename);
+        
+        println!("Exporting to ZIP file: {}", zip_path.display());
+        
+        // Create the ZIP file
+        zip_directory(&source_dir, &zip_path.to_string_lossy())
+            .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
+        
+        Ok(zip_path.to_string_lossy().to_string())
+    } else {
+        // Export as a directory
+        let export_dir = dest_path.join(&export_name);
+        
+        println!("Exporting to directory: {}", export_dir.display());
+        
+        // Create the destination directory
+        fs::create_dir_all(&export_dir).map_err(|e| e.to_string())?;
+        
+        // Copy options
+        let options = CopyOptions::new().overwrite(true).copy_inside(true);
+        
+        // Copy the directory contents
+        fs_extra::dir::copy(&source_dir, &export_dir, &options)
+            .map_err(|e| format!("Failed to copy directory: {}", e))?;
+        
+        Ok(export_dir.to_string_lossy().to_string())
+    }
+}
+
+/// Helper function to create a ZIP file from a directory
+fn zip_directory(src_dir: &str, zip_path: &str) -> Result<(), String> {
+    let src_path = Path::new(src_dir);
+    if !src_path.exists() || !src_path.is_dir() {
+        return Err(format!("Source directory does not exist: {}", src_dir));
+    }
+    
+    // Create the ZIP file
+    let file = fs::File::create(zip_path).map_err(|e| e.to_string())?;
+    let mut zip = ZipWriter::new(file);
+    
+    // Use default compression
+    let options = FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755);
+    
+    // A buffer for reading files
+    let mut buffer = Vec::new();
+    
+    // Walk the directory
+    fn add_directory_to_zip(
+        path: &Path,
+        src_path: &Path,
+        zip: &mut ZipWriter<fs::File>,
+        options: &FileOptions,
+        buffer: &mut Vec<u8>,
+    ) -> Result<(), String> {
+        for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            
+            // Create a relative path for the ZIP file
+            let name = path.strip_prefix(src_path)
+                .map_err(|_| "Failed to create relative path".to_string())?
+                .to_string_lossy();
+            
+            // Handle directories and files
+            if path.is_dir() {
+                // Add directory to ZIP
+                zip.add_directory(name.to_string(), *options)
+                    .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                
+                // Recursively add contents
+                add_directory_to_zip(&path, src_path, zip, options, buffer)?;
+            } else {
+                // Add file to ZIP
+                zip.start_file(name.to_string(), *options)
+                    .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
+                
+                // Read and write file contents
+                let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
+                buffer.clear();
+                file.read_to_end(buffer).map_err(|e| e.to_string())?;
+                zip.write_all(buffer).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    }
+    
+    // Start adding files to the ZIP
+    add_directory_to_zip(src_path, src_path, &mut zip, &options, &mut buffer)?;
+    
+    // Finalize the ZIP file
+    zip.finish().map_err(|e| format!("Failed to finalize ZIP file: {}", e))?;
+    
+    Ok(())
 }
 
 /// List all media files in a directory

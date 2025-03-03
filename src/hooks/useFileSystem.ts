@@ -10,7 +10,9 @@ import {
   writeCaptionFile,
   MediaFile,
   getAssetUrl,
-  getCaptionPath
+  getCaptionPath,
+  selectExportDirectory,
+  exportDirectory
 } from '../lib/fs';
 import { getMediaThumbnail } from '../lib/media';
 
@@ -153,6 +155,37 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     return getAssetUrl(mediaFile.path);
   }, []);
 
+  /**
+   * Export the current working directory
+   * @param asZip Whether to export as a ZIP file
+   * @returns Promise with the path to the exported directory or ZIP file
+   */
+  const exportWorkingDirectory = useCallback(async (asZip: boolean): Promise<string | null> => {
+    if (!workingDirectory) {
+      setError('No working directory to export');
+      return null;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // Select the export destination directory
+      const exportDestination = await selectExportDirectory();
+      
+      // Export the working directory
+      const exportedPath = await exportDirectory(workingDirectory, exportDestination, asZip);
+      
+      return exportedPath;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workingDirectory]);
+
   return {
     sourceDirectory,
     workingDirectory,
@@ -165,6 +198,7 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     writeCaption,
     updateFileSelection,
     getThumbnail,
-    getMediaUrl
+    getMediaUrl,
+    exportWorkingDirectory
   };
 } 

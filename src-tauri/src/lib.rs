@@ -4,8 +4,8 @@ mod media;
 mod api;
 
 use file_system::commands::{
-    duplicate_directory, list_directory_files, read_caption_file, register_working_directory,
-    select_directory, write_caption_file,
+    duplicate_directory, export_directory, list_directory_files, read_caption_file, 
+    register_working_directory, select_directory, select_export_directory, write_caption_file,
 };
 
 use media::commands::get_media_thumbnail;
@@ -24,11 +24,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // File system commands
             select_directory,
+            select_export_directory,
             duplicate_directory,
             register_working_directory,
             read_caption_file,
             write_caption_file,
             list_directory_files,
+            export_directory,
             // Media commands
             get_media_thumbnail,
             // API commands
