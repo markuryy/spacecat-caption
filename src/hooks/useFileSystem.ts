@@ -50,9 +50,14 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
       // Register the working directory as an asset scope
       await registerWorkingDirectory(duplicatedDir);
       
-      // Load the media files
+      // Load the media files first without thumbnails
       const files = await listDirectoryFiles(duplicatedDir);
+      
+      // Show files immediately without waiting for thumbnails
       setMediaFiles(files);
+      
+      // Start thumbnail generation in the background
+      generateThumbnails(files);
       
       return { sourceDirectory: selectedDir, workingDirectory: duplicatedDir, files };
     } catch (err) {
@@ -63,6 +68,46 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
       setIsLoading(false);
     }
   }, [workingDirName]);
+
+  /**
+   * Generate thumbnails for both image and video files in the background
+   */
+  const generateThumbnails = useCallback(async (files: MediaFile[]) => {
+    // Process both image and video files
+    const mediaFiles = files.filter(file => 
+      (file.type === 'video' || file.file_type === 'video') ||
+      (file.type === 'image' || file.file_type === 'image')
+    );
+    
+    if (mediaFiles.length === 0) return;
+    
+    // Process thumbnails in smaller batches
+    const batchSize = 5;
+    const total = mediaFiles.length;
+    
+    for (let i = 0; i < total; i += batchSize) {
+      const batch = mediaFiles.slice(i, i + batchSize);
+      
+      // Process each batch concurrently
+      await Promise.all(
+        batch.map(async (file) => {
+          try {
+            // Generate thumbnail for both images and videos
+            const thumbnail = await getMediaThumbnail(file.path, 100);
+            
+            // Update just this file in the state
+            setMediaFiles(prevFiles => 
+              prevFiles.map(f => 
+                f.id === file.id ? { ...f, thumbnail } : f
+              )
+            );
+          } catch (err) {
+            // Silent fail - no logging needed
+          }
+        })
+      );
+    }
+  }, []);
 
   /**
    * Load media files from the working directory
@@ -78,7 +123,13 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
       setError(null);
       
       const files = await listDirectoryFiles(workingDirectory);
+      
+      // Show files immediately without waiting for thumbnails
       setMediaFiles(files);
+      
+      // Start thumbnail generation in the background
+      generateThumbnails(files);
+      
       return files;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -87,7 +138,7 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     } finally {
       setIsLoading(false);
     }
-  }, [workingDirectory]);
+  }, [workingDirectory, generateThumbnails]);
 
   /**
    * Read a caption file for a media file
@@ -136,10 +187,6 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
    * Get a thumbnail for a media file
    */
   const getThumbnail = useCallback(async (mediaFile: MediaFile, maxSize: number = 100) => {
-    if (mediaFile.file_type !== 'image' && mediaFile.type !== 'image') {
-      return null;
-    }
-    
     try {
       return await getMediaThumbnail(mediaFile.path, maxSize);
     } catch (err) {
@@ -199,6 +246,7 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     updateFileSelection,
     getThumbnail,
     getMediaUrl,
-    exportWorkingDirectory
+    exportWorkingDirectory,
+    generateThumbnails
   };
 } 

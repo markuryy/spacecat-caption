@@ -4026,6 +4026,7 @@ dependencies = [
  "chrono",
  "fs_extra",
  "image",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",
@@ -4036,6 +4037,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-persisted-scope",
  "tauri-plugin-store",
+ "tempfile",
  "zip",
 ]
 

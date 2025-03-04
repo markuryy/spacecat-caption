@@ -3,4 +3,27 @@
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
+  overflow-y: hidden;
+  overflow-x: hidden;
+  overscroll-behavior: none;
 }
+
+/* Ensure all scrollable containers prevent overscroll */
+div, section, main, aside {
+  overscroll-behavior: none;
+}
+
+/* For any scrollable containers that need scrolling */
+.scrollable {
+  overflow: auto;
+  overscroll-behavior: none;
+}
+
+/* Disable context menu 
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+*/

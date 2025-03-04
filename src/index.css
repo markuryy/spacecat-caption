@@ -120,6 +120,18 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Prevent overscroll/bounce effect */
+    overscroll-behavior: none;
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Prevent overscroll on html element as well */
+  html {
+    overscroll-behavior: none;
+    overflow: hidden;
   }
 }
 
@@ -129,11 +141,16 @@
     margin: 0;
     padding: 0;
     text-align: left;
+    /* Prevent overscroll/bounce effect */
+    overscroll-behavior: none;
+    height: 100vh;
+    overflow: auto;
   }
 
   /* Optimize for virtualization */
   .virtual-list {
     will-change: transform;
+    overscroll-behavior: none;
   }
 
   /* Optimize image rendering */
@@ -144,10 +161,16 @@
 
   /* Improve scrolling performance */
   * {
-    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
   }
 
   /* Prevent text selection for better performance */
   .no-select {
     user-select: none;
   }
+
+  /* Disable context menu
+  * {
+    -webkit-context-menu: none;
+    -moz-context-menu: none;
+  } */

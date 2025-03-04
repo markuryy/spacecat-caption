@@ -14,6 +14,17 @@ export interface MediaFile {
   thumbnail?: string;
 }
 
+export interface ProjectDirectory {
+  id: string;
+  name: string;
+  path: string;
+  size_bytes: number;
+  modified: string;
+  created: string;
+  // Frontend-specific properties
+  formatted_size?: string;
+}
+
 /**
  * Select a directory using the native file dialog
  * @returns Promise with the selected directory path
@@ -116,4 +127,50 @@ export async function exportDirectory(
   asZip: boolean
 ): Promise<string> {
   return invoke('export_directory', { sourceDir, destinationDir, asZip });
+}
+
+/**
+ * Format a file size in bytes to a human-readable string
+ * @param bytes The size in bytes
+ * @returns Human-readable string
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  
+  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+/**
+ * List all project directories in the app data directory
+ * @returns Promise with an array of project directories
+ */
+export async function listProjectDirectories(): Promise<ProjectDirectory[]> {
+  const projects: ProjectDirectory[] = await invoke('list_project_directories');
+  
+  // Add formatted size property
+  return projects.map(project => ({
+    ...project,
+    formatted_size: formatFileSize(project.size_bytes)
+  }));
+}
+
+/**
+ * Delete a project directory
+ * @param path Path to the project directory
+ * @returns Promise that resolves when the directory is deleted
+ */
+export async function deleteProjectDirectory(path: string): Promise<void> {
+  return invoke('delete_project_directory', { path });
+}
+
+/**
+ * Open a project directory in the system's file explorer
+ * @param path Path to the project directory
+ * @returns Promise that resolves when the directory is opened
+ */
+export async function openProjectDirectory(path: string): Promise<void> {
+  return invoke('open_project_directory', { path });
 }

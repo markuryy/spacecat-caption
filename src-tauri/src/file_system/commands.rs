@@ -1,13 +1,17 @@
-use fs_extra::dir::CopyOptions;
+use fs_extra::dir::{CopyOptions, get_size};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::AppHandle;
+use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_fs::FsExt;
+use tauri::path::BaseDirectory;
 use zip::{write::FileOptions, ZipWriter};
-use chrono::Local;
+use chrono::{Local, DateTime, Utc};
+use tauri_plugin_opener::OpenerExt;
+
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MediaFile {
@@ -17,6 +21,16 @@ pub struct MediaFile {
     pub relative_path: String,
     pub file_type: String,
     pub has_caption: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectDirectory {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub size_bytes: u64,
+    pub modified: String,
+    pub created: String,
 }
 
 /// Select a directory using the native file dialog
@@ -250,6 +264,160 @@ fn zip_directory(src_dir: &str, zip_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// List all project directories in the app data directory
+#[tauri::command]
+pub async fn list_project_directories(app: AppHandle) -> Result<Vec<ProjectDirectory>, String> {
+    let mut project_dirs = Vec::new();
+    
+    // Get the app data directory
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    
+    if !app_data_dir.exists() {
+        // Create it if it doesn't exist
+        fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
+    }
+    
+    // Specifically look for the 'spacecat-working' directory
+    let working_dir = app_data_dir.join("spacecat-working");
+    
+    // If the working directory doesn't exist, create it
+    if !working_dir.exists() {
+        fs::create_dir_all(&working_dir).map_err(|e| e.to_string())?;
+        return Ok(Vec::new()); // Return empty list since we just created the directory
+    }
+    
+    // List directories inside the working directory
+    let entries = match fs::read_dir(&working_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            println!("Error reading working directory: {}", e);
+            return Err(format!("Failed to read working directory: {}", e));
+        }
+    };
+    
+    for entry in entries {
+        if let Ok(entry) = entry {
+            let path = entry.path();
+            
+            // We want all directories inside the working directory
+            if path.is_dir() {
+                // Get directory name
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                
+                // Get directory path
+                let path_str = path.to_string_lossy().to_string();
+                
+                // Calculate directory size
+                let size_bytes = match get_size(&path) {
+                    Ok(size) => size,
+                    Err(_) => 0, // If we can't get the size, default to 0
+                };
+                
+                // Get modified and created time
+                let metadata = match fs::metadata(&path) {
+                    Ok(meta) => meta,
+                    Err(_) => continue, // Skip if we can't get metadata
+                };
+                
+                // Format modification time
+                let modified = match metadata.modified() {
+                    Ok(time) => {
+                        let datetime: DateTime<Utc> = time.into();
+                        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                    },
+                    Err(_) => "Unknown".to_string(),
+                };
+                
+                // Format creation time
+                let created = match metadata.created() {
+                    Ok(time) => {
+                        let datetime: DateTime<Utc> = time.into();
+                        datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                    },
+                    Err(_) => "Unknown".to_string(),
+                };
+                
+                // Create a unique ID
+                let id = name.clone();
+                
+                // Add to the list
+                project_dirs.push(ProjectDirectory {
+                    id,
+                    name,
+                    path: path_str,
+                    size_bytes,
+                    modified,
+                    created,
+                });
+            }
+        }
+    }
+    
+    // Sort by modified time (newest first)
+    project_dirs.sort_by(|a, b| b.modified.cmp(&a.modified));
+    
+    Ok(project_dirs)
+}
+
+/// Delete a project directory
+#[tauri::command]
+pub async fn delete_project_directory(app: AppHandle, path: String) -> Result<(), String> {
+    let dir_path = Path::new(&path);
+    
+    // Validate the path is a directory
+    if !dir_path.exists() {
+        return Err(format!("Directory does not exist: {}", path));
+    }
+    
+    if !dir_path.is_dir() {
+        return Err(format!("Path is not a directory: {}", path));
+    }
+    
+    // Additional security check - ensure it's within the working directory
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let working_dir = app_data_dir.join("spacecat-working");
+    
+    if !dir_path.starts_with(&working_dir) {
+        return Err(format!("Security error: Directory is outside the working directory: {}", path));
+    }
+    
+    // Delete the directory
+    match fs::remove_dir_all(dir_path) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Failed to delete directory: {}", e)),
+    }
+}
+
+/// Open a project directory in the system's file explorer
+#[tauri::command]
+pub async fn open_project_directory(app: AppHandle, path: String) -> Result<(), String> {
+    let dir_path = Path::new(&path);
+    
+    // Validate the path is a directory
+    if !dir_path.exists() {
+        return Err(format!("Directory does not exist: {}", path));
+    }
+    
+    if !dir_path.is_dir() {
+        return Err(format!("Path is not a directory: {}", path));
+    }
+    
+    // Additional security check - ensure it's within the working directory
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let working_dir = app_data_dir.join("spacecat-working");
+    
+    if !dir_path.starts_with(&working_dir) {
+        return Err(format!("Security error: Directory is outside the working directory: {}", path));
+    }
+    
+    // Use the opener plugin to open the directory
+    app.opener().open_path(path, None::<&str>)
+        .map_err(|e| format!("Failed to open directory: {}", e))
+}
+
 /// List all media files in a directory
 #[tauri::command]
 pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, String> {
@@ -264,8 +432,7 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, S
 
     let mut media_files = Vec::new();
 
-    // Debug: Print the directory being processed
-    println!("Processing directory: {}", directory);
+    // No debug logging
 
     // Check if the directory is empty
     let entries = match fs::read_dir(dir_path) {
@@ -277,7 +444,6 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, S
     };
 
     let mut file_count = 0;
-    let mut media_count = 0;
 
     for entry in entries {
         if let Ok(entry) = entry {
@@ -286,18 +452,16 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, S
 
             // Skip directories
             if path.is_dir() {
-                println!("Skipping subdirectory: {}", path.display());
+                // Skip silently
                 continue;
             }
 
-            // Debug: Print each file being processed
-            println!("Processing file: {}", path.display());
+            // No debug logging
 
             if let Some(extension) = path.extension() {
                 let ext = extension.to_string_lossy().to_lowercase();
 
-                // Debug: Print the extension
-                println!("File extension: {}", ext);
+                // No debug logging
 
                 // Check if it's a media file
                 let file_type = if ["jpg", "jpeg", "png", "gif", "webp"].contains(&ext.as_str()) {
@@ -305,11 +469,9 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, S
                 } else if ["mp4", "webm", "mov", "avi"].contains(&ext.as_str()) {
                     "video"
                 } else {
-                    println!("Skipping non-media file with extension: {}", ext);
+                    // Skip silently
                     continue; // Skip non-media files
                 };
-
-                media_count += 1;
 
                 // Get the file name
                 let name = path
@@ -333,8 +495,7 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, S
                 // Create a unique ID
                 let id = format!("{}-{}", file_type, name);
 
-                // Debug: Print the media file being added
-                println!("Adding media file: {} ({})", name, file_type);
+                // No debug logging
 
                 // Add to the list
                 media_files.push(MediaFile {
@@ -354,17 +515,7 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, S
     // Sort by name
     media_files.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // Debug: Print the total number of media files found
-    println!(
-        "Found {} media files out of {} total files in {}",
-        media_files.len(),
-        file_count,
-        directory
-    );
-
-    if media_files.is_empty() && file_count > 0 {
-        println!("WARNING: Directory contains files but no media files were found. Check supported extensions.");
-    }
+    // No debug logging
 
     Ok(media_files)
 }

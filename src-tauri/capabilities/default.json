@@ -21,6 +21,8 @@
     "opener:default",
     "dialog:default",
     "core:path:default",
-    "store:default"
+    "store:default",
+    "opener:default",
+    "opener:default"
   ]
 }
