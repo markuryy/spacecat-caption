@@ -120,18 +120,15 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Prevent overscroll/bounce effect */
-    overscroll-behavior: none;
-    overflow: hidden;
-    position: fixed;
-    width: 100%;
+    /* Allow drag events while preventing bounce */
+    overscroll-behavior: contain;
     height: 100%;
   }
 
-  /* Prevent overscroll on html element as well */
+  /* Allow drag events on html */
   html {
-    overscroll-behavior: none;
-    overflow: hidden;
+    overscroll-behavior: contain;
+    height: 100%;
   }
 }
 
@@ -141,27 +138,18 @@
     margin: 0;
     padding: 0;
     text-align: left;
-    /* Prevent overscroll/bounce effect */
-    overscroll-behavior: none;
     height: 100vh;
-    overflow: auto;
   }
 
   /* Optimize for virtualization */
   .virtual-list {
     will-change: transform;
-    overscroll-behavior: none;
   }
 
   /* Optimize image rendering */
   img {
     image-rendering: auto;
     backface-visibility: hidden;
-  }
-
-  /* Improve scrolling performance */
-  * {
-    overscroll-behavior: none;
   }
 
   /* Prevent text selection for better performance */

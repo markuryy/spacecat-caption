@@ -120,9 +120,14 @@ const CropEditor: React.FC<CropEditorProps> = ({
         setOpen(false);
       }
     } catch (error) {
+      // Display a more user-friendly error message
+      toast.error(`Failed to crop ${fileType}`, {
+        description: "An error occurred during the crop operation. Check the application logs for details.",
+        duration: 5000,
+      });
+      
+      // Log the full error to the console
       console.error('Error during crop operation:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      toast.error(`Failed to crop ${fileType}: ${errorMessage}`);
     } finally {
       setIsProcessing(false);
     }

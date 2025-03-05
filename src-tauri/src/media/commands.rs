@@ -430,19 +430,29 @@ pub async fn crop_video(path: String, crop_params: serde_json::Value) -> Result<
         Ok(output) => {
             if !output.status.success() {
                 let error = String::from_utf8_lossy(&output.stderr);
+                // Log the full error to console
+                eprintln!("FFmpeg error (crop): {}", error);
+                
                 // Try to remove the temporary file if it exists
                 let _ = fs::remove_file(&temp_path);
                 // Try to remove the backup file
                 let _ = fs::remove_file(&backup_path);
-                return Err(format!("Failed to crop video: {}", error));
+                
+                // Return a more concise error message
+                return Err("Failed to crop video. Check logs for details.".to_string());
             }
         },
         Err(e) => {
+            // Log the full error to console
+            eprintln!("Failed to run ffmpeg (crop): {}", e);
+            
             // Try to remove the temporary file if it exists
             let _ = fs::remove_file(&temp_path);
             // Try to remove the backup file
             let _ = fs::remove_file(&backup_path);
-            return Err(format!("Failed to run ffmpeg: {}", e))
+            
+            // Return a more concise error message
+            return Err("Failed to run FFmpeg. Check logs for details.".to_string());
         },
     }
     
@@ -492,7 +502,7 @@ pub async fn trim_video(path: String, start_time: f64, end_time: f64) -> Result<
         return Err("FFmpeg is not installed or not in PATH. Please install FFmpeg to enable video trimming.".to_string());
     }
     
-    // Create a temporary path for the trimmed video
+    // Create temporary path for the trimmed video
     let path_obj = Path::new(&path);
     let temp_path = generate_modified_filename(path_obj, "_temp");
     
@@ -505,20 +515,32 @@ pub async fn trim_video(path: String, start_time: f64, end_time: f64) -> Result<
     // Calculate duration
     let duration = end_time - start_time;
     
-    // Execute FFmpeg to trim the video
+    // Log the command we're about to run
+    eprintln!("Trimming video from {} to {} (duration: {})", start_time, end_time, duration);
+    
+    // Execute FFmpeg with a simpler, single-pass approach
+    // Place -ss BEFORE input for more accurate seeking
+    // Use -vsync 2 to maintain frame timing
+    // Use -avoid_negative_ts 1 to handle timestamp issues
     let output = Command::new("ffmpeg")
-        .arg("-i")
-        .arg(&path)
         .arg("-ss")
         .arg(start_time.to_string())
+        .arg("-i")
+        .arg(&path)
         .arg("-t")
         .arg(duration.to_string())
         .arg("-c:v")
-        .arg("copy") // Copy video stream without re-encoding to preserve quality
+        .arg("copy") // Copy video stream without re-encoding
         .arg("-c:a")
         .arg("copy") // Copy audio stream without re-encoding
         .arg("-avoid_negative_ts")
-        .arg("make_zero")
+        .arg("1")
+        .arg("-vsync")
+        .arg("2") // Maintain frame timing
+        .arg("-map_metadata")
+        .arg("0") // Copy metadata
+        .arg("-movflags")
+        .arg("+faststart") // Optimize for web playback
         .arg(&temp_path)
         .output();
     
@@ -526,25 +548,32 @@ pub async fn trim_video(path: String, start_time: f64, end_time: f64) -> Result<
         Ok(output) => {
             if !output.status.success() {
                 let error = String::from_utf8_lossy(&output.stderr);
-                // Try to remove the temporary file if it exists
+                // Log the full error to console
+                eprintln!("FFmpeg error: {}", error);
+                
+                // Clean up temporary files
                 let _ = fs::remove_file(&temp_path);
-                // Try to remove the backup file
                 let _ = fs::remove_file(&backup_path);
-                return Err(format!("Failed to trim video: {}", error));
+                
+                // Return a more concise error message
+                return Err("Failed to trim video. Check logs for details.".to_string());
             }
         },
         Err(e) => {
-            // Try to remove the temporary file if it exists
+            // Log the full error to console
+            eprintln!("Failed to run ffmpeg: {}", e);
+            
+            // Clean up temporary files
             let _ = fs::remove_file(&temp_path);
-            // Try to remove the backup file
             let _ = fs::remove_file(&backup_path);
-            return Err(format!("Failed to run ffmpeg: {}", e));
+            
+            // Return a more concise error message
+            return Err("Failed to run FFmpeg. Check logs for details.".to_string());
         },
     }
     
     // Check if the temporary file exists
     if !temp_path.exists() {
-        // Try to remove the backup file
         let _ = fs::remove_file(&backup_path);
         return Err("Failed to create trimmed video".to_string());
     }
