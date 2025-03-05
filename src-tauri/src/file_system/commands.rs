@@ -418,6 +418,42 @@ pub async fn open_project_directory(app: AppHandle, path: String) -> Result<(), 
         .map_err(|e| format!("Failed to open directory: {}", e))
 }
 
+/// Delete a media file and its associated caption file
+#[tauri::command]
+pub async fn delete_media_file(path: String) -> Result<(), String> {
+    let file_path = Path::new(&path);
+    
+    // Validate the file exists
+    if !file_path.exists() {
+        return Err(format!("File does not exist: {}", path));
+    }
+    
+    if !file_path.is_file() {
+        return Err(format!("Path is not a file: {}", path));
+    }
+    
+    // Try to find the associated caption file
+    let caption_path = file_path.with_extension("txt");
+    
+    // Delete the media file
+    match fs::remove_file(file_path) {
+        Ok(_) => {
+            println!("Successfully deleted media file: {}", path);
+            
+            // Try to delete the caption file if it exists
+            if caption_path.exists() {
+                match fs::remove_file(&caption_path) {
+                    Ok(_) => println!("Successfully deleted caption file: {}", caption_path.display()),
+                    Err(e) => println!("Warning: Failed to delete caption file {}: {}", caption_path.display(), e),
+                }
+            }
+            
+            Ok(())
+        },
+        Err(e) => Err(format!("Failed to delete media file: {}", e)),
+    }
+}
+
 /// List all media files in a directory
 #[tauri::command]
 pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, String> {

@@ -6,7 +6,7 @@ mod api;
 use file_system::commands::{
     duplicate_directory, export_directory, list_directory_files, read_caption_file, 
     register_working_directory, select_directory, select_export_directory, write_caption_file,
-    list_project_directories, delete_project_directory, open_project_directory,
+    list_project_directories, delete_project_directory, open_project_directory, delete_media_file,
 };
 
 use media::commands::{get_media_thumbnail, crop_video, trim_video, save_cropped_image};
@@ -35,6 +35,7 @@ pub fn run() {
             list_project_directories,
             delete_project_directory,
             open_project_directory,
+            delete_media_file,
             // Media commands
             get_media_thumbnail,
             crop_video,

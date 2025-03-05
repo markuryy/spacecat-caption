@@ -12,7 +12,8 @@ import {
   getAssetUrl,
   getCaptionPath,
   selectExportDirectory,
-  exportDirectory
+  exportDirectory,
+  deleteMediaFile
 } from '../lib/fs';
 import { getMediaThumbnail } from '../lib/media';
 
@@ -242,6 +243,27 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     }
   }, [workingDirectory]);
 
+  /**
+   * Remove a media file and its caption
+   * @param mediaFile The media file to remove
+   * @returns Promise that resolves when the file is deleted
+   */
+  const removeFile = useCallback(async (mediaFile: MediaFile): Promise<boolean> => {
+    try {
+      // Delete the file
+      await deleteMediaFile(mediaFile.path);
+      
+      // Update the state to remove the deleted file
+      setMediaFiles(prev => prev.filter(f => f.id !== mediaFile.id));
+      
+      return true;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+      return false;
+    }
+  }, []);
+
   return {
     sourceDirectory,
     workingDirectory,
@@ -256,6 +278,7 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     getThumbnail,
     getMediaUrl,
     exportWorkingDirectory,
-    generateThumbnails
+    generateThumbnails,
+    removeFile
   };
 } 

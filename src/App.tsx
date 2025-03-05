@@ -26,7 +26,8 @@ function App() {
     getThumbnail,
     getMediaUrl,
     updateFileSelection,
-    exportWorkingDirectory
+    exportWorkingDirectory,
+    removeFile
   } = useFileSystem();
   
   const {
@@ -273,6 +274,53 @@ function App() {
       console.error("Error updating file:", error);
     }
   }, [currentFile, mediaFiles, updateFileSelection, getThumbnail]);
+  
+  // Handle file removal
+  const handleRemoveFile = useCallback(async (file: MediaFile) => {
+    if (!file) return;
+    
+    try {
+      // Show confirmation toast
+      toast.promise(
+        (async () => {
+          // Delete the file
+          const success = await removeFile(file);
+          if (!success) throw new Error("Failed to delete file");
+          
+          // If this was the current file, navigate to another file or clear current file
+          if (currentFile && currentFile.id === file.id) {
+            // Find the next file to show
+            if (mediaFiles.length > 1) {
+              const currentIndex = mediaFiles.findIndex(f => f.id === file.id);
+              const nextIndex = currentIndex < mediaFiles.length - 1 ? currentIndex + 1 : currentIndex - 1;
+              
+              if (nextIndex >= 0) {
+                // Navigate to the next file
+                await handleFileSelect(mediaFiles[nextIndex]);
+              } else {
+                // No more files, clear current file
+                setCurrentFile(null);
+                setCaption('');
+              }
+            } else {
+              // This was the only file, clear current file
+              setCurrentFile(null);
+              setCaption('');
+            }
+          }
+          
+          return file.name;
+        })(),
+        {
+          loading: "Deleting file...",
+          success: (filename) => `Deleted ${filename}`,
+          error: (error) => `Failed to delete file: ${error}`
+        }
+      );
+    } catch (error) {
+      console.error("Error removing file:", error);
+    }
+  }, [currentFile, mediaFiles, removeFile, handleFileSelect]);
 
   // Generate caption for current file
   const handleGenerateCurrentCaption = () => {
@@ -383,6 +431,7 @@ function App() {
                 saveCaption={saveCaption}
                 handleGenerateCurrentCaption={handleGenerateCurrentCaption}
                 handleFileUpdate={handleFileUpdate}
+                handleRemoveFile={handleRemoveFile}
               />
             </>
           ) : (

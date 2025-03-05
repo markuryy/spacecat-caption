@@ -176,3 +176,12 @@ export async function deleteProjectDirectory(path: string): Promise<void> {
 export async function openProjectDirectory(path: string): Promise<void> {
   return invoke('open_project_directory', { path });
 }
+
+/**
+ * Delete a media file and its associated caption file
+ * @param path Path to the media file
+ * @returns Promise that resolves when the file is deleted
+ */
+export async function deleteMediaFile(path: string): Promise<void> {
+  return invoke('delete_media_file', { path });
+}
