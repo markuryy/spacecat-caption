@@ -1,4 +1,5 @@
-use fs_extra::dir::{CopyOptions, get_size};
+use chrono::{DateTime, Local, Utc};
+use fs_extra::dir::{get_size, CopyOptions};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
@@ -7,11 +8,8 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_fs::FsExt;
-use tauri::path::BaseDirectory;
-use zip::{write::FileOptions, ZipWriter};
-use chrono::{Local, DateTime, Utc};
 use tauri_plugin_opener::OpenerExt;
-
+use zip::{write::FileOptions, ZipWriter};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MediaFile {
@@ -151,47 +149,47 @@ pub async fn export_directory(
     // Generate a timestamp for the export directory/file name
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
     let source_path = Path::new(&source_dir);
-    
+
     // Get the source directory name to use as part of the export name
     let source_name = source_path
         .file_name()
         .ok_or_else(|| "Invalid source directory".to_string())?
         .to_string_lossy();
-    
+
     // Create the export name using the timestamp
     let export_name = format!("spacecat_export_{}_{}", source_name, timestamp);
-    
+
     // Create the full destination path
     let dest_path = Path::new(&destination_dir);
-    
+
     if as_zip {
         // Export as a ZIP file
         let zip_filename = format!("{}.zip", export_name);
         let zip_path = dest_path.join(&zip_filename);
-        
+
         println!("Exporting to ZIP file: {}", zip_path.display());
-        
+
         // Create the ZIP file
         zip_directory(&source_dir, &zip_path.to_string_lossy())
             .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
-        
+
         Ok(zip_path.to_string_lossy().to_string())
     } else {
         // Export as a directory
         let export_dir = dest_path.join(&export_name);
-        
+
         println!("Exporting to directory: {}", export_dir.display());
-        
+
         // Create the destination directory
         fs::create_dir_all(&export_dir).map_err(|e| e.to_string())?;
-        
+
         // Copy options
         let options = CopyOptions::new().overwrite(true).copy_inside(true);
-        
+
         // Copy the directory contents
         fs_extra::dir::copy(&source_dir, &export_dir, &options)
             .map_err(|e| format!("Failed to copy directory: {}", e))?;
-        
+
         Ok(export_dir.to_string_lossy().to_string())
     }
 }
@@ -202,19 +200,19 @@ fn zip_directory(src_dir: &str, zip_path: &str) -> Result<(), String> {
     if !src_path.exists() || !src_path.is_dir() {
         return Err(format!("Source directory does not exist: {}", src_dir));
     }
-    
+
     // Create the ZIP file
     let file = fs::File::create(zip_path).map_err(|e| e.to_string())?;
     let mut zip = ZipWriter::new(file);
-    
+
     // Use default compression
     let options = FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o755);
-    
+
     // A buffer for reading files
     let mut buffer = Vec::new();
-    
+
     // Walk the directory
     fn add_directory_to_zip(
         path: &Path,
@@ -226,25 +224,26 @@ fn zip_directory(src_dir: &str, zip_path: &str) -> Result<(), String> {
         for entry in fs::read_dir(path).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let path = entry.path();
-            
+
             // Create a relative path for the ZIP file
-            let name = path.strip_prefix(src_path)
+            let name = path
+                .strip_prefix(src_path)
                 .map_err(|_| "Failed to create relative path".to_string())?
                 .to_string_lossy();
-            
+
             // Handle directories and files
             if path.is_dir() {
                 // Add directory to ZIP
                 zip.add_directory(name.to_string(), *options)
                     .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
-                
+
                 // Recursively add contents
                 add_directory_to_zip(&path, src_path, zip, options, buffer)?;
             } else {
                 // Add file to ZIP
                 zip.start_file(name.to_string(), *options)
                     .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
-                
+
                 // Read and write file contents
                 let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
                 buffer.clear();
@@ -254,13 +253,14 @@ fn zip_directory(src_dir: &str, zip_path: &str) -> Result<(), String> {
         }
         Ok(())
     }
-    
+
     // Start adding files to the ZIP
     add_directory_to_zip(src_path, src_path, &mut zip, &options, &mut buffer)?;
-    
+
     // Finalize the ZIP file
-    zip.finish().map_err(|e| format!("Failed to finalize ZIP file: {}", e))?;
-    
+    zip.finish()
+        .map_err(|e| format!("Failed to finalize ZIP file: {}", e))?;
+
     Ok(())
 }
 
@@ -268,24 +268,24 @@ fn zip_directory(src_dir: &str, zip_path: &str) -> Result<(), String> {
 #[tauri::command]
 pub async fn list_project_directories(app: AppHandle) -> Result<Vec<ProjectDirectory>, String> {
     let mut project_dirs = Vec::new();
-    
+
     // Get the app data directory
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    
+
     if !app_data_dir.exists() {
         // Create it if it doesn't exist
         fs::create_dir_all(&app_data_dir).map_err(|e| e.to_string())?;
     }
-    
+
     // Specifically look for the 'spacecat-working' directory
     let working_dir = app_data_dir.join("spacecat-working");
-    
+
     // If the working directory doesn't exist, create it
     if !working_dir.exists() {
         fs::create_dir_all(&working_dir).map_err(|e| e.to_string())?;
         return Ok(Vec::new()); // Return empty list since we just created the directory
     }
-    
+
     // List directories inside the working directory
     let entries = match fs::read_dir(&working_dir) {
         Ok(entries) => entries,
@@ -294,11 +294,11 @@ pub async fn list_project_directories(app: AppHandle) -> Result<Vec<ProjectDirec
             return Err(format!("Failed to read working directory: {}", e));
         }
     };
-    
+
     for entry in entries {
         if let Ok(entry) = entry {
             let path = entry.path();
-            
+
             // We want all directories inside the working directory
             if path.is_dir() {
                 // Get directory name
@@ -306,43 +306,43 @@ pub async fn list_project_directories(app: AppHandle) -> Result<Vec<ProjectDirec
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_default();
-                
+
                 // Get directory path
                 let path_str = path.to_string_lossy().to_string();
-                
+
                 // Calculate directory size
                 let size_bytes = match get_size(&path) {
                     Ok(size) => size,
                     Err(_) => 0, // If we can't get the size, default to 0
                 };
-                
+
                 // Get modified and created time
                 let metadata = match fs::metadata(&path) {
                     Ok(meta) => meta,
                     Err(_) => continue, // Skip if we can't get metadata
                 };
-                
+
                 // Format modification time
                 let modified = match metadata.modified() {
                     Ok(time) => {
                         let datetime: DateTime<Utc> = time.into();
                         datetime.format("%Y-%m-%d %H:%M:%S").to_string()
-                    },
+                    }
                     Err(_) => "Unknown".to_string(),
                 };
-                
+
                 // Format creation time
                 let created = match metadata.created() {
                     Ok(time) => {
                         let datetime: DateTime<Utc> = time.into();
                         datetime.format("%Y-%m-%d %H:%M:%S").to_string()
-                    },
+                    }
                     Err(_) => "Unknown".to_string(),
                 };
-                
+
                 // Create a unique ID
                 let id = name.clone();
-                
+
                 // Add to the list
                 project_dirs.push(ProjectDirectory {
                     id,
@@ -355,10 +355,10 @@ pub async fn list_project_directories(app: AppHandle) -> Result<Vec<ProjectDirec
             }
         }
     }
-    
+
     // Sort by modified time (newest first)
     project_dirs.sort_by(|a, b| b.modified.cmp(&a.modified));
-    
+
     Ok(project_dirs)
 }
 
@@ -366,24 +366,27 @@ pub async fn list_project_directories(app: AppHandle) -> Result<Vec<ProjectDirec
 #[tauri::command]
 pub async fn delete_project_directory(app: AppHandle, path: String) -> Result<(), String> {
     let dir_path = Path::new(&path);
-    
+
     // Validate the path is a directory
     if !dir_path.exists() {
         return Err(format!("Directory does not exist: {}", path));
     }
-    
+
     if !dir_path.is_dir() {
         return Err(format!("Path is not a directory: {}", path));
     }
-    
+
     // Additional security check - ensure it's within the working directory
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let working_dir = app_data_dir.join("spacecat-working");
-    
+
     if !dir_path.starts_with(&working_dir) {
-        return Err(format!("Security error: Directory is outside the working directory: {}", path));
+        return Err(format!(
+            "Security error: Directory is outside the working directory: {}",
+            path
+        ));
     }
-    
+
     // Delete the directory
     match fs::remove_dir_all(dir_path) {
         Ok(_) => Ok(()),
@@ -395,26 +398,30 @@ pub async fn delete_project_directory(app: AppHandle, path: String) -> Result<()
 #[tauri::command]
 pub async fn open_project_directory(app: AppHandle, path: String) -> Result<(), String> {
     let dir_path = Path::new(&path);
-    
+
     // Validate the path is a directory
     if !dir_path.exists() {
         return Err(format!("Directory does not exist: {}", path));
     }
-    
+
     if !dir_path.is_dir() {
         return Err(format!("Path is not a directory: {}", path));
     }
-    
+
     // Additional security check - ensure it's within the working directory
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let working_dir = app_data_dir.join("spacecat-working");
-    
+
     if !dir_path.starts_with(&working_dir) {
-        return Err(format!("Security error: Directory is outside the working directory: {}", path));
+        return Err(format!(
+            "Security error: Directory is outside the working directory: {}",
+            path
+        ));
     }
-    
+
     // Use the opener plugin to open the directory
-    app.opener().open_path(path, None::<&str>)
+    app.opener()
+        .open_path(path, None::<&str>)
         .map_err(|e| format!("Failed to open directory: {}", e))
 }
 
@@ -422,34 +429,41 @@ pub async fn open_project_directory(app: AppHandle, path: String) -> Result<(), 
 #[tauri::command]
 pub async fn delete_media_file(path: String) -> Result<(), String> {
     let file_path = Path::new(&path);
-    
+
     // Validate the file exists
     if !file_path.exists() {
         return Err(format!("File does not exist: {}", path));
     }
-    
+
     if !file_path.is_file() {
         return Err(format!("Path is not a file: {}", path));
     }
-    
+
     // Try to find the associated caption file
     let caption_path = file_path.with_extension("txt");
-    
+
     // Delete the media file
     match fs::remove_file(file_path) {
         Ok(_) => {
             println!("Successfully deleted media file: {}", path);
-            
+
             // Try to delete the caption file if it exists
             if caption_path.exists() {
                 match fs::remove_file(&caption_path) {
-                    Ok(_) => println!("Successfully deleted caption file: {}", caption_path.display()),
-                    Err(e) => println!("Warning: Failed to delete caption file {}: {}", caption_path.display(), e),
+                    Ok(_) => println!(
+                        "Successfully deleted caption file: {}",
+                        caption_path.display()
+                    ),
+                    Err(e) => println!(
+                        "Warning: Failed to delete caption file {}: {}",
+                        caption_path.display(),
+                        e
+                    ),
                 }
             }
-            
+
             Ok(())
-        },
+        }
         Err(e) => Err(format!("Failed to delete media file: {}", e)),
     }
 }

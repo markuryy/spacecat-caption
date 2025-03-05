@@ -80,9 +80,7 @@ pub async fn generate_caption(
         messages: vec![Message {
             role: "user".to_string(),
             content: vec![
-                MessageContent::Text {
-                    text: prompt,
-                },
+                MessageContent::Text { text: prompt },
                 MessageContent::Image {
                     image_url: ImageUrl {
                         url: image_data_url,
@@ -113,8 +111,14 @@ pub async fn generate_caption(
     // Check if the request was successful
     if !response.status().is_success() {
         let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("API request failed with status {}: {}", status, error_text));
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!(
+            "API request failed with status {}: {}",
+            status, error_text
+        ));
     }
 
     // Parse the response
@@ -182,11 +186,13 @@ pub async fn generate_captions(
             model.clone(),
             image_detail.clone(),
             use_detail_parameter,
-        ).await {
+        )
+        .await
+        {
             Ok(caption) => results.push((path, caption)),
             Err(e) => results.push((path, format!("Error: {}", e))),
         }
     }
 
     Ok(results)
-} 
+}

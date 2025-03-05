@@ -26,9 +26,51 @@ export function TrimEditor({ src, filePath, onSave, disabled = false }: TrimEdit
   const [isDragging, setIsDragging] = useState<'start' | 'end' | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [mediaTimestamp, setMediaTimestamp] = useState<number>(Date.now());
+  const [progressPercent, setProgressPercent] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Set up progress polling
+  useEffect(() => {
+    let progressInterval: number | undefined;
+    
+    // Only poll when processing
+    if (isProcessing) {
+      // Poll every 200ms for progress updates
+      progressInterval = window.setInterval(async () => {
+        try {
+          const progress: number = await invoke('get_trim_progress');
+          
+          // Check for error state (-1)
+          if (progress === -1) {
+            toast.error("Trim operation failed");
+            setIsProcessing(false);
+            setProgressPercent(0);
+            clearInterval(progressInterval);
+            return;
+          }
+          
+          // Update progress
+          setProgressPercent(progress);
+          
+          // If we're done, clean up
+          if (progress === 100) {
+            clearInterval(progressInterval);
+          }
+        } catch (error) {
+          console.error("Failed to get progress:", error);
+        }
+      }, 200);
+    }
+    
+    // Clean up
+    return () => {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+    };
+  }, [isProcessing]);
 
   // Update timestamp when dialog opens to force video reload
   useEffect(() => {
@@ -75,6 +117,8 @@ export function TrimEditor({ src, filePath, onSave, disabled = false }: TrimEdit
       setDuration(0);
       setIsPlaying(false);
       setIsLoading(true);
+      setProgressPercent(0);
+      setIsProcessing(false);
     }
   }, [open]);
 
@@ -142,9 +186,13 @@ export function TrimEditor({ src, filePath, onSave, disabled = false }: TrimEdit
   const handleTrim = async () => {
     if (!filePath) return;
     
-    setIsProcessing(true);
-    
     try {
+      // Reset progress tracking first
+      await invoke('reset_trim_progress');
+      
+      setIsProcessing(true);
+      setProgressPercent(0);
+      
       // Calculate actual start and end times in seconds
       let startTime = (trimStart * duration) / 100;
       let endTime = (trimEnd * duration) / 100;
@@ -155,26 +203,36 @@ export function TrimEditor({ src, filePath, onSave, disabled = false }: TrimEdit
       
       console.log("Trimming video from", startTime, "to", endTime, "(adjusted to frame boundaries)");
       
-      // Call Rust function to trim the video
+      // Call Rust function to trim the video with AppHandle parameter
       const newPath = await invoke('trim_video', {
         path: filePath,
         startTime,
         endTime,
       });
       
+      // When processing is complete and successful
+      // The progress polling will handle the UI updates
+      // Only here we close the dialog and save
       onSave(newPath as string);
       setOpen(false);
       
     } catch (error) {
+      // Get the error message from the error object
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : typeof error === 'string' 
+          ? error 
+          : "Unknown error";
+      
       // Display a more user-friendly error message
       toast.error("Failed to trim video", {
-        description: "An error occurred while trimming the video. Check the application logs for details.",
+        description: errorMessage,
         duration: 5000,
       });
       
       // Log the full error to the console
       console.error('Error trimming video:', error);
-    } finally {
+      setProgressPercent(0);
       setIsProcessing(false);
     }
   };
@@ -280,15 +338,27 @@ export function TrimEditor({ src, filePath, onSave, disabled = false }: TrimEdit
                   Cancel
                 </Button>
               </DialogClose>
-              <Button 
-                variant="default" 
-                size="sm"
-                onClick={handleTrim}
-                disabled={isProcessing}
-              >
-                <Check className="h-3 w-3 mr-1" />
-                Save
-              </Button>
+              {isProcessing ? (
+                <div className="flex flex-col w-24">
+                  <div className="h-2 w-full bg-neutral-200 rounded-full overflow-hidden mb-1">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300 ease-in-out"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-center">{progressPercent}%</span>
+                </div>
+              ) : (
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  onClick={handleTrim}
+                  disabled={isProcessing}
+                >
+                  <Check className="h-3 w-3 mr-1" />
+                  Save
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
