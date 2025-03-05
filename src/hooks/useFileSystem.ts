@@ -188,7 +188,11 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
    */
   const getThumbnail = useCallback(async (mediaFile: MediaFile, maxSize: number = 100) => {
     try {
-      return await getMediaThumbnail(mediaFile.path, maxSize);
+      // Add a cache-busting timestamp to the path to ensure we get a fresh thumbnail
+      const timestamp = mediaFile.refreshToken || Date.now();
+      const pathWithTimestamp = `${mediaFile.path}?t=${timestamp}`;
+      
+      return await getMediaThumbnail(pathWithTimestamp, maxSize);
     } catch (err) {
       console.error('Failed to generate thumbnail:', err);
       return null;
@@ -199,7 +203,12 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
    * Get the asset URL for a media file
    */
   const getMediaUrl = useCallback((mediaFile: MediaFile) => {
-    return getAssetUrl(mediaFile.path);
+    // Add a cache-busting parameter if the media file has a refreshToken
+    const url = getAssetUrl(mediaFile.path);
+    if (mediaFile.refreshToken) {
+      return `${url}?t=${mediaFile.refreshToken}`;
+    }
+    return url;
   }, []);
 
   /**

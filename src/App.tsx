@@ -234,6 +234,45 @@ function App() {
       setCaption('');
     }
   };
+  
+  // Handle file update from media editors (crop/trim)
+  const handleFileUpdate = useCallback(async (oldFile: MediaFile, newPath: string) => {
+    try {
+      // Since we're now overwriting the original file, we don't need to change the path
+      // However, we do need to refresh the file's thumbnail
+      
+      // Create an updated file object with the same path but refreshed
+      const updatedFile = {
+        ...oldFile,
+        // We'll update the timestamp to force a refresh of the thumbnail
+        refreshToken: Date.now()
+      };
+      
+      // If this is the current file, update it
+      if (currentFile && currentFile.id === oldFile.id) {
+        setCurrentFile(updatedFile);
+      }
+      
+      // Update the file in the mediaFiles array to trigger thumbnail refresh
+      updateFileSelection(updatedFile.id, updatedFile.selected || false);
+      
+      // Get a new thumbnail for the file
+      try {
+        const newThumbnail = await getThumbnail(updatedFile);
+        if (newThumbnail) {
+          // Update the file with the new thumbnail
+          updateFileSelection(updatedFile.id, updatedFile.selected || false, newThumbnail);
+        }
+      } catch (err) {
+        console.warn("Could not refresh thumbnail after editing", err);
+      }
+      
+      toast.success("File updated successfully");
+    } catch (error) {
+      toast.error("Failed to update file");
+      console.error("Error updating file:", error);
+    }
+  }, [currentFile, mediaFiles, updateFileSelection, getThumbnail]);
 
   // Generate caption for current file
   const handleGenerateCurrentCaption = () => {
@@ -343,6 +382,7 @@ function App() {
                 handleCaptionChange={handleCaptionChange}
                 saveCaption={saveCaption}
                 handleGenerateCurrentCaption={handleGenerateCurrentCaption}
+                handleFileUpdate={handleFileUpdate}
               />
             </>
           ) : (

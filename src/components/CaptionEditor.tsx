@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { RefreshCw } from "lucide-react";
-import { MediaFile } from "@/lib/fs";
+import { MediaFile, getAssetUrl } from "@/lib/fs";
 import { Badge } from "@/components/ui/badge";
+import { CropEditor, TrimEditor, RemoveButton } from "@/components/media-editor";
+import { toast } from "sonner";
 
 interface CaptionEditorProps {
   currentFile: MediaFile | null;
@@ -14,6 +16,8 @@ interface CaptionEditorProps {
   handleCaptionChange: (value: string) => void;
   saveCaption: () => Promise<void>;
   handleGenerateCurrentCaption: () => void;
+  handleRemoveFile?: (file: MediaFile) => void;
+  handleFileUpdate?: (oldFile: MediaFile, newPath: string) => void;
 }
 
 export function CaptionEditor({
@@ -24,7 +28,9 @@ export function CaptionEditor({
   isProcessing,
   mediaFiles,
   handleCaptionChange,
-  handleGenerateCurrentCaption
+  handleGenerateCurrentCaption,
+  handleRemoveFile,
+  handleFileUpdate
 }: CaptionEditorProps) {
   // Get current file index for pagination display
   const currentFileIndex = currentFile 
@@ -47,6 +53,15 @@ export function CaptionEditor({
     const end = nameWithoutExtension.slice(-charsToKeep);
     
     return `${start}...${end}${extension}`;
+  };
+
+  // Handler for when a file is updated by an editor (crop or trim)
+  const handleFileEditorSave = (newFilePath: string) => {
+    if (currentFile && handleFileUpdate) {
+      handleFileUpdate(currentFile, newFilePath);
+    } else {
+      toast.error("Failed to update file: missing handler");
+    }
   };
     
   return (
@@ -75,7 +90,38 @@ export function CaptionEditor({
             )}
           </div>
           <div className="flex items-center gap-2">
-            {/* TODO: Add trim (conditional, video only), crop (image and video), and delete (image and video plus corresponding caption) here */}            
+            {currentFile && (
+              <>
+                {/* Only show trim button for videos */}
+                {currentFile.type === 'video' && (
+                  <TrimEditor
+                    src={getAssetUrl(currentFile.path)}
+                    filePath={currentFile.path}
+                    onSave={handleFileEditorSave}
+                    disabled={isProcessing}
+                  />
+                )}
+                
+                {/* Show crop button for both image and video */}
+                <CropEditor
+                  src={getAssetUrl(currentFile.path)}
+                  filePath={currentFile.path}
+                  fileType={currentFile.type || 'image'}
+                  onSave={handleFileEditorSave}
+                  disabled={isProcessing}
+                />
+                
+                {/* Delete button */}
+                {handleRemoveFile && (
+                  <RemoveButton 
+                    currentFile={currentFile}
+                    onRemove={handleRemoveFile}
+                    disabled={isProcessing}
+                  />
+                )}
+              </>
+            )}
+            
             <Button 
               variant="default" 
               size="sm" 

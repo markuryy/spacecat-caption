@@ -9,7 +9,7 @@ use file_system::commands::{
     list_project_directories, delete_project_directory, open_project_directory,
 };
 
-use media::commands::get_media_thumbnail;
+use media::commands::{get_media_thumbnail, crop_video, trim_video, save_cropped_image};
 use api::commands::{generate_caption, generate_captions};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -37,6 +37,9 @@ pub fn run() {
             open_project_directory,
             // Media commands
             get_media_thumbnail,
+            crop_video,
+            trim_video,
+            save_cropped_image,
             // API commands
             generate_caption,
             generate_captions,

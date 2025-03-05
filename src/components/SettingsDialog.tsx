@@ -346,10 +346,11 @@ export function SettingsDialog({ settings, updateSingleSetting }: SettingsDialog
                                 </ContextMenuItem>
                                 <ContextMenuItem 
                                   onClick={() => handleDeleteProject(project.path, project.name)}
+                                  disabled={isDeleting === project.path}
                                   variant="destructive"
                                 >
                                   <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete project
+                                  {isDeleting === project.path ? "Deleting..." : "Delete project"}
                                 </ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>

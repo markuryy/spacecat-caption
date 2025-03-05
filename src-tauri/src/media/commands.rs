@@ -9,6 +9,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use tempfile::tempdir;
+use std::path::PathBuf;
+use anyhow::{Result, anyhow};
 
 // Define a simple cache for thumbnails
 struct ThumbnailCache {
@@ -76,14 +78,21 @@ static THUMBNAIL_CACHE: Lazy<Mutex<ThumbnailCache>> = Lazy::new(|| {
 /// Generate a thumbnail for an image or video file and return as base64
 #[tauri::command]
 pub async fn get_media_thumbnail(path: String, max_size: u32) -> Result<String, String> {
+    // Strip any timestamp query parameter from the path
+    let clean_path = if path.contains('?') {
+        path.split('?').next().unwrap_or(&path).to_string()
+    } else {
+        path.clone()
+    };
+    
     // Check cache first
     if let Ok(cache) = THUMBNAIL_CACHE.lock() {
-        if let Some(cached) = cache.get(&path, max_size) {
+        if let Some(cached) = cache.get(&clean_path, max_size) {
             return Ok(cached);
         }
     }
     
-    let path_obj = Path::new(&path);
+    let path_obj = Path::new(&clean_path);
 
     // Check if the file exists
     if !path_obj.exists() {
@@ -124,9 +133,9 @@ pub async fn get_media_thumbnail(path: String, max_size: u32) -> Result<String, 
     };
     
     // If successful, cache the result
-    if let Ok(ref thumbnail) = result {
+    if let Ok(ref thumbnail) = &result {
         if let Ok(mut cache) = THUMBNAIL_CACHE.lock() {
-            cache.set(&path, max_size, thumbnail.clone());
+            cache.set(&clean_path, max_size, thumbnail.clone());
         }
     }
     
@@ -256,4 +265,304 @@ async fn generate_video_thumbnail(path: &Path, max_size: u32) -> Result<String, 
     let _ = fs::remove_file(&frame_path);
     
     result
+}
+
+/// Generate a file name with a suffix for modified files
+fn generate_modified_filename(path: &Path, suffix: &str) -> PathBuf {
+    let stem = path.file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".to_string());
+    
+    let extension = path.extension()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "".to_string());
+    
+    let new_name = if extension.is_empty() {
+        format!("{}{}", stem, suffix)
+    } else {
+        format!("{}{}.{}", stem, suffix, extension)
+    };
+    
+    path.with_file_name(new_name)
+}
+
+/// Save a cropped image from the provided data URL, overwriting the original file
+#[tauri::command]
+pub async fn save_cropped_image(path: String, data_url: String) -> Result<String, String> {
+    // Parse the data URL
+    if !data_url.starts_with("data:image/") {
+        return Err("Invalid data URL format".to_string());
+    }
+    
+    // Extract the base64 part
+    let base64_data = match data_url.split(',').nth(1) {
+        Some(data) => data,
+        None => return Err("Invalid data URL format".to_string()),
+    };
+    
+    // Decode the base64 data
+    let image_data = match general_purpose::STANDARD.decode(base64_data) {
+        Ok(data) => data,
+        Err(e) => return Err(format!("Failed to decode base64 data: {}", e)),
+    };
+    
+    // Use the original path
+    let path_obj = Path::new(&path);
+    
+    // Create a backup of the original file (just in case)
+    let backup_path = generate_modified_filename(path_obj, "_backup");
+    if let Err(e) = fs::copy(path_obj, &backup_path) {
+        return Err(format!("Failed to create backup of original image: {}", e));
+    }
+    
+    // Save the image data, overwriting the original file
+    if let Err(e) = fs::write(path_obj, image_data) {
+        // If writing fails, try to restore from backup
+        let _ = fs::copy(&backup_path, path_obj); // Best effort restore
+        let _ = fs::remove_file(&backup_path); // Clean up backup
+        return Err(format!("Failed to write cropped image: {}", e));
+    }
+    
+    // Clean up the backup file
+    let _ = fs::remove_file(&backup_path);
+    
+    // Return the original path (for consistency with the existing interface)
+    Ok(path)
+}
+
+/// Crop a video using FFmpeg, overwriting the original file
+#[tauri::command]
+pub async fn crop_video(path: String, crop_params: serde_json::Value) -> Result<String, String> {
+    // Parse crop parameters
+    let x = crop_params.get("x")
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| "Missing or invalid x coordinate".to_string())?;
+    
+    let y = crop_params.get("y")
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| "Missing or invalid y coordinate".to_string())?;
+    
+    let width = crop_params.get("width")
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| "Missing or invalid width".to_string())?;
+    
+    let height = crop_params.get("height")
+        .and_then(|v| v.as_f64())
+        .ok_or_else(|| "Missing or invalid height".to_string())?;
+    
+    let rotation = crop_params.get("rotation")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    
+    let flip_h = crop_params.get("flipH")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    let flip_v = crop_params.get("flipV")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    // Check if ffmpeg is available
+    let ffmpeg_result = Command::new("ffmpeg")
+        .arg("-version")
+        .output();
+    
+    if ffmpeg_result.is_err() {
+        return Err("FFmpeg is not installed or not in PATH. Please install FFmpeg to enable video cropping.".to_string());
+    }
+    
+    // Create a temporary path for the cropped video
+    let path_obj = Path::new(&path);
+    let temp_path = generate_modified_filename(path_obj, "_temp");
+    
+    // Create a backup of the original file
+    let backup_path = generate_modified_filename(path_obj, "_backup");
+    if let Err(e) = fs::copy(path_obj, &backup_path) {
+        return Err(format!("Failed to create backup of original video: {}", e));
+    }
+    
+    // Build FFmpeg filter chain
+    let mut filters = Vec::new();
+    
+    // Add rotation if needed
+    if rotation != 0 {
+        let angle = match rotation % 360 {
+            90 => "PI/2",
+            180 => "PI",
+            270 => "3*PI/2",
+            _ => "0",
+        };
+        filters.push(format!("rotate={}:ow=rotw({}):oh=roth({})", angle, angle, angle));
+    }
+    
+    // Add flips if needed
+    if flip_h {
+        filters.push("hflip".to_string());
+    }
+    if flip_v {
+        filters.push("vflip".to_string());
+    }
+    
+    // Add crop filter with appropriate parameters
+    filters.push(format!("crop={}:{}:{}:{}", width, height, x, y));
+    
+    // Build the complete filter chain
+    let filter_chain = filters.join(",");
+    
+    // Execute FFmpeg with the filter chain
+    let output = Command::new("ffmpeg")
+        .arg("-i")
+        .arg(&path)
+        .arg("-vf")
+        .arg(filter_chain)
+        .arg("-c:a")
+        .arg("copy") // Copy audio stream without re-encoding
+        .arg("-c:v")
+        .arg("libx264") // Use H.264 codec for video
+        .arg("-preset")
+        .arg("medium") // Balance between speed and quality
+        .arg("-crf")
+        .arg("23") // Reasonable quality
+        .arg(&temp_path)
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if !output.status.success() {
+                let error = String::from_utf8_lossy(&output.stderr);
+                // Try to remove the temporary file if it exists
+                let _ = fs::remove_file(&temp_path);
+                // Try to remove the backup file
+                let _ = fs::remove_file(&backup_path);
+                return Err(format!("Failed to crop video: {}", error));
+            }
+        },
+        Err(e) => {
+            // Try to remove the temporary file if it exists
+            let _ = fs::remove_file(&temp_path);
+            // Try to remove the backup file
+            let _ = fs::remove_file(&backup_path);
+            return Err(format!("Failed to run ffmpeg: {}", e))
+        },
+    }
+    
+    // Check if the temp file exists
+    if !temp_path.exists() {
+        // Try to remove the backup file
+        let _ = fs::remove_file(&backup_path);
+        return Err("Failed to create cropped video".to_string());
+    }
+    
+    // Move the temp file to overwrite the original
+    if let Err(e) = fs::rename(&temp_path, path_obj) {
+        // If rename fails, try to restore from backup
+        let _ = fs::copy(&backup_path, path_obj);
+        // Try to remove the temporary file
+        let _ = fs::remove_file(&temp_path);
+        // Try to remove the backup file
+        let _ = fs::remove_file(&backup_path);
+        return Err(format!("Failed to replace original video: {}", e));
+    }
+    
+    // Remove the backup file
+    let _ = fs::remove_file(&backup_path);
+    
+    // Return the original path
+    Ok(path)
+}
+
+/// Trim a video using FFmpeg, overwriting the original file
+#[tauri::command]
+pub async fn trim_video(path: String, start_time: f64, end_time: f64) -> Result<String, String> {
+    // Validate time parameters
+    if start_time < 0.0 {
+        return Err("Start time cannot be negative".to_string());
+    }
+    
+    if end_time <= start_time {
+        return Err("End time must be greater than start time".to_string());
+    }
+    
+    // Check if ffmpeg is available
+    let ffmpeg_result = Command::new("ffmpeg")
+        .arg("-version")
+        .output();
+    
+    if ffmpeg_result.is_err() {
+        return Err("FFmpeg is not installed or not in PATH. Please install FFmpeg to enable video trimming.".to_string());
+    }
+    
+    // Create a temporary path for the trimmed video
+    let path_obj = Path::new(&path);
+    let temp_path = generate_modified_filename(path_obj, "_temp");
+    
+    // Create a backup of the original file
+    let backup_path = generate_modified_filename(path_obj, "_backup");
+    if let Err(e) = fs::copy(path_obj, &backup_path) {
+        return Err(format!("Failed to create backup of original video: {}", e));
+    }
+    
+    // Calculate duration
+    let duration = end_time - start_time;
+    
+    // Execute FFmpeg to trim the video
+    let output = Command::new("ffmpeg")
+        .arg("-i")
+        .arg(&path)
+        .arg("-ss")
+        .arg(start_time.to_string())
+        .arg("-t")
+        .arg(duration.to_string())
+        .arg("-c:v")
+        .arg("copy") // Copy video stream without re-encoding to preserve quality
+        .arg("-c:a")
+        .arg("copy") // Copy audio stream without re-encoding
+        .arg("-avoid_negative_ts")
+        .arg("make_zero")
+        .arg(&temp_path)
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if !output.status.success() {
+                let error = String::from_utf8_lossy(&output.stderr);
+                // Try to remove the temporary file if it exists
+                let _ = fs::remove_file(&temp_path);
+                // Try to remove the backup file
+                let _ = fs::remove_file(&backup_path);
+                return Err(format!("Failed to trim video: {}", error));
+            }
+        },
+        Err(e) => {
+            // Try to remove the temporary file if it exists
+            let _ = fs::remove_file(&temp_path);
+            // Try to remove the backup file
+            let _ = fs::remove_file(&backup_path);
+            return Err(format!("Failed to run ffmpeg: {}", e));
+        },
+    }
+    
+    // Check if the temporary file exists
+    if !temp_path.exists() {
+        // Try to remove the backup file
+        let _ = fs::remove_file(&backup_path);
+        return Err("Failed to create trimmed video".to_string());
+    }
+    
+    // Move the temporary file to overwrite the original
+    if let Err(e) = fs::rename(&temp_path, path_obj) {
+        // If rename fails, try to restore from backup
+        let _ = fs::copy(&backup_path, path_obj);
+        // Try to remove the temporary file
+        let _ = fs::remove_file(&temp_path);
+        // Try to remove the backup file
+        let _ = fs::remove_file(&backup_path);
+        return Err(format!("Failed to replace original video: {}", e));
+    }
+    
+    // Remove the backup file
+    let _ = fs::remove_file(&backup_path);
+    
+    // Return the original path
+    Ok(path)
 }

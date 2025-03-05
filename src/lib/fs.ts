@@ -12,6 +12,8 @@ export interface MediaFile {
   type?: 'image' | 'video';
   selected?: boolean;
   thumbnail?: string;
+  // For cache-busting and refreshing UI after edits
+  refreshToken?: number;
 }
 
 export interface ProjectDirectory {

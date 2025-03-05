@@ -157,9 +157,10 @@ export function FileSidebar({
                           <div className="h-12 w-12 rounded overflow-hidden flex-shrink-0 bg-white flex items-center justify-center">
                             {file.thumbnail ? (
                               <img 
-                                src={file.thumbnail} 
+                                src={`${file.thumbnail}${file.refreshToken ? `?t=${file.refreshToken}` : ''}`}
                                 alt={file.name} 
                                 className="h-full w-full object-cover"
+                                key={`thumb-${file.id}-${file.refreshToken || 'default'}`}
                               />
                             ) : file.type === 'image' || file.file_type === 'image' ? (
                               <ImageIcon className="h-6 w-6 text-muted-foreground" />
