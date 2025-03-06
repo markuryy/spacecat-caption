@@ -21,6 +21,7 @@ function App() {
     mediaFiles,
     isLoading,
     selectSourceDirectory,
+    loadExistingProject,
     readCaption,
     writeCaption,
     getThumbnail,
@@ -403,6 +404,7 @@ function App() {
           currentFile={currentFile}
           isProcessing={isProcessing}
           selectSourceDirectory={selectSourceDirectory}
+          loadExistingProject={loadExistingProject}
           handleFileSelect={handleFileSelect}
           updateFileSelection={updateFileSelection}
           handleGenerateCaptions={handleGenerateCaptions}

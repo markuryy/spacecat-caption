@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FolderOpen, FileText, RefreshCw, ImageIcon, Video, Wand2 } from "lucide-react";
-import { MediaFile } from "@/lib/fs";
+import { FolderOpen, FileText, RefreshCw, ImageIcon, Video, Wand2, Clock, ArrowRight } from "lucide-react";
+import { MediaFile, ProjectDirectory } from "@/lib/fs";
 import { toast } from "sonner";
+import { useProjectManagement } from "@/hooks/useProjectManagement";
+import { Separator } from './ui/separator';
 
 interface FileSidebarProps {
   sourceDirectory: string | null;
@@ -15,6 +17,11 @@ interface FileSidebarProps {
   currentFile: MediaFile | null;
   isProcessing: boolean;
   selectSourceDirectory: () => Promise<{
+    sourceDirectory: string;
+    workingDirectory: string;
+    files: MediaFile[];
+  }>;
+  loadExistingProject: (projectPath: string) => Promise<{
     sourceDirectory: string;
     workingDirectory: string;
     files: MediaFile[];
@@ -32,6 +39,7 @@ export function FileSidebar({
   currentFile,
   isProcessing,
   selectSourceDirectory,
+  loadExistingProject,
   handleFileSelect,
   updateFileSelection,
   handleGenerateCaptions
@@ -71,19 +79,24 @@ export function FileSidebar({
     <div className="w-80 border-r border-border flex flex-col h-full">
       {/* Directory selection */}
       {!workingDirectory ? (
-        <div className="flex-1 flex items-center justify-center p-4">
-          <Button 
-            onClick={handleSelectDirectory} 
-            className="flex items-center gap-2"
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <FolderOpen className="h-4 w-4" />
-            )}
-            {isLoading ? 'Loading...' : 'Select Directory'}
-          </Button>
+        <div className="flex flex-col h-full p-4 gap-4">
+          <div>
+            <RecentProjects loadExistingProject={loadExistingProject} />
+          </div>
+          <div className="mt-auto flex justify-center mb-2">
+            <Button 
+              onClick={handleSelectDirectory} 
+              className="flex items-center gap-2"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <FolderOpen className="h-4 w-4" />
+              )}
+              {isLoading ? 'Loading...' : 'Select Directory'}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col h-full">
@@ -210,6 +223,85 @@ export function FileSidebar({
           </Tabs>
         </div>
       )}
+    </div>
+  );
+}
+
+interface RecentProjectsProps {
+  loadExistingProject: (projectPath: string) => Promise<any>;
+}
+
+function RecentProjects({ loadExistingProject }: RecentProjectsProps) {
+  const { projects, isLoading, fetchProjects } = useProjectManagement();
+  const [recentProjects, setRecentProjects] = useState<ProjectDirectory[]>([]);
+  
+  // Load recently used projects
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+  
+  // Sort projects by date and take the most recent 3
+  useEffect(() => {
+    if (projects.length > 0) {
+      const sorted = [...projects]
+        .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
+        .slice(0, 3);
+      
+      setRecentProjects(sorted);
+    }
+  }, [projects]);
+  
+  if (isLoading) {
+    return null;
+  }
+  
+  if (recentProjects.length === 0) {
+    return null;
+  }
+  
+  return (
+    <div className="w-full max-w-xs">
+      <div className="flex items-center gap-1 mb-2 text-sm text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>Recent projects</span>
+      </div>
+      
+      <div className="space-y-2">
+        {recentProjects.map((project) => (
+          <Button
+            key={project.id}
+            variant="ghost"
+            className="w-full justify-start text-xs gap-2 h-auto py-2"
+            onClick={() => {
+              toast.promise(
+                loadExistingProject(project.path),
+                {
+                  loading: `Opening ${project.name}...`,
+                  success: (result) => {
+                    // Check if result has the expected structure
+                    if (result && result.files) {
+                      return `Loaded ${result.files.length} media files from ${project.name}`;
+                    } else {
+                      return `Opened project ${project.name}`;
+                    }
+                  },
+                  error: (err) => `Failed to open project: ${err}`
+                }
+              );
+            }}
+          >
+            <div className="flex items-center justify-between w-full">
+              <div className="truncate flex-1 text-left">
+                <span className="font-medium">{project.name}</span>
+                <div className="text-xs text-muted-foreground">
+                  {new Date(project.modified).toLocaleDateString()}
+                </div>
+              </div>
+              <ArrowRight className="h-3 w-3 opacity-70" />
+            </div>
+          </Button>
+        ))}
+      </div>
     </div>
   );
 }

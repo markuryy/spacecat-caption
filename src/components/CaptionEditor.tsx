@@ -148,10 +148,6 @@ export function CaptionEditor({
         
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>{caption.length} characters</span>
-          <div className="flex gap-4">
-            <span>Shift+← Shift+→: Navigate</span>
-            <span>Shift+G: Generate caption</span>
-          </div>
         </div>
       </div>
     </div>

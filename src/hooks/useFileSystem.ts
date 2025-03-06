@@ -264,6 +264,46 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     }
   }, []);
 
+  /**
+   * Load an existing project directory directly without selecting a source directory
+   * @param projectPath The path to the existing project directory
+   */
+  const loadExistingProject = useCallback(async (projectPath: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // Use the project directory path directly
+      // For source directory, extract the project name
+      const pathParts = projectPath.split('/');
+      const projectName = pathParts[pathParts.length - 1];
+      setSourceDirectory(projectName);
+      
+      // Set the working directory
+      setWorkingDirectory(projectPath);
+      
+      // Register the working directory as an asset scope
+      await registerWorkingDirectory(projectPath);
+      
+      // Load the media files without thumbnails
+      const files = await listDirectoryFiles(projectPath);
+      
+      // Show files immediately without waiting for thumbnails
+      setMediaFiles(files);
+      
+      // Start thumbnail generation in the background
+      generateThumbnails(files);
+      
+      return { sourceDirectory: projectName, workingDirectory: projectPath, files };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [generateThumbnails]);
+
   return {
     sourceDirectory,
     workingDirectory,
@@ -271,6 +311,7 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     isLoading,
     error,
     selectSourceDirectory,
+    loadExistingProject,
     loadMediaFiles,
     readCaption,
     writeCaption,
