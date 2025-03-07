@@ -49,3 +49,13 @@ export async function cropVideo(
 ): Promise<string> {
   return invoke('crop_video', { path, cropParams });
 }
+
+/**
+ * Extract a frame from a video at a specific timestamp
+ * @param path Path to the video file
+ * @param timeSeconds Optional timestamp in seconds to extract the frame (default: first frame)
+ * @returns Promise with the frame as a data URL
+ */
+export async function extractVideoFrame(path: string, timeSeconds?: number): Promise<string> {
+  return invoke('extract_video_frame', { path, time_sec: timeSeconds });
+}

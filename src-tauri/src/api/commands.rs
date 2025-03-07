@@ -50,7 +50,7 @@ struct ChoiceMessage {
     content: String,
 }
 
-/// Generate a caption for an image using OpenAI's API
+/// Generate a caption for an image or video frame using OpenAI's API
 #[tauri::command]
 pub async fn generate_caption(
     api_url: String,
@@ -60,11 +60,15 @@ pub async fn generate_caption(
     model: String,
     image_detail: String,
     use_detail_parameter: bool,
+    video_frame_url: Option<String>,
 ) -> Result<String, String> {
-    // Create a data URL from the image
-    let image_data_url = match create_data_url_from_image(&image_path).await {
-        Ok(url) => url,
-        Err(e) => return Err(format!("Failed to create data URL: {}", e)),
+    // Use provided video frame if available, otherwise create from image path
+    let image_data_url = match video_frame_url {
+        Some(url) => url,
+        None => match create_data_url_from_image(&image_path).await {
+            Ok(url) => url,
+            Err(e) => return Err(format!("Failed to create data URL: {}", e)),
+        },
     };
 
     // Set detail parameter if enabled
@@ -164,7 +168,7 @@ async fn create_data_url_from_image(path: &str) -> Result<String, Box<dyn Error>
     Ok(format!("data:image/jpeg;base64,{}", base64_string))
 }
 
-/// Generate captions for multiple images
+/// Generate captions for multiple images and videos
 #[tauri::command]
 pub async fn generate_captions(
     api_url: String,
@@ -178,6 +182,29 @@ pub async fn generate_captions(
     let mut results = Vec::new();
 
     for path in image_paths {
+        // Check if the file is a video
+        let path_obj = std::path::Path::new(&path);
+        let is_video = if let Some(ext) = path_obj.extension() {
+            let ext_str = ext.to_string_lossy().to_lowercase();
+            ["mp4", "webm", "mov", "avi"].contains(&ext_str.as_str())
+        } else {
+            false
+        };
+
+        // For videos, extract the first frame
+        let video_frame_url = if is_video {
+            match super::super::media::commands::extract_video_frame(path.clone(), None).await {
+                Ok(frame) => Some(frame),
+                Err(e) => {
+                    eprintln!("Failed to extract video frame: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Generate caption
         match generate_caption(
             api_url.clone(),
             api_key.clone(),
@@ -186,6 +213,7 @@ pub async fn generate_captions(
             model.clone(),
             image_detail.clone(),
             use_detail_parameter,
+            video_frame_url,
         )
         .await
         {

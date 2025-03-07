@@ -61,6 +61,7 @@ export function MediaViewer({
                 className="max-w-full max-h-full object-contain rounded-md"
                 key={`video-${currentFile.id}-${mediaTimestamp}`} // Key change forces re-render
                 onClick={(e) => e.stopPropagation()} // Prevent spotlight from opening when clicking video controls
+                id="main-video-player"
               />
             )}
           </div>
@@ -147,6 +148,7 @@ function Spotlight({
               className="max-w-[90%] max-h-[90%] object-contain"
               key={`spotlight-video-${currentFile.id}-${mediaTimestamp}`}
               onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the video
+              id="spotlight-video-player"
             />
           )}
 

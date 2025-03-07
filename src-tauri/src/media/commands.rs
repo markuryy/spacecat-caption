@@ -513,6 +513,92 @@ static TRIM_PROGRESS: Lazy<Mutex<i32>> = Lazy::new(|| {
     Mutex::new(0) // Initialize with 0% progress
 });
 
+/// Extract a frame from a video at a specific timestamp and return it as a data URL
+#[tauri::command]
+pub async fn extract_video_frame(path: String, time_sec: Option<f64>) -> Result<String, String> {
+    // Create a temporary directory to store the extracted frame
+    let temp_dir = match tempdir() {
+        Ok(dir) => dir,
+        Err(e) => return Err(format!("Failed to create temporary directory: {}", e)),
+    };
+
+    // Create a path for the extracted frame
+    let frame_path = temp_dir.path().join("frame.jpg");
+    let frame_path_str = frame_path.to_string_lossy().to_string();
+
+    // Check if the file exists
+    let path_obj = Path::new(&path);
+    if !path_obj.exists() {
+        return Err(format!("File not found: {}", path_obj.display()));
+    }
+
+    // Check if ffmpeg is available
+    let ffmpeg_result = Command::new("ffmpeg").arg("-version").output();
+    if ffmpeg_result.is_err() {
+        return Err("FFmpeg is not installed or not in PATH. Please install FFmpeg to enable frame extraction.".to_string());
+    }
+
+    // Build command to extract the frame at the specified time, or the first frame if time_sec is None
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-i").arg(path_obj.to_string_lossy().to_string());
+    
+    // If time_sec is provided, seek to that position
+    if let Some(time) = time_sec {
+        cmd.arg("-ss").arg(time.to_string());
+    }
+    
+    // Extract a single frame
+    cmd.arg("-vframes")
+       .arg("1")
+       .arg("-q:v")
+       .arg("2") // High quality
+       .arg(&frame_path_str);
+
+    // Execute the command
+    let output = cmd.output();
+
+    match output {
+        Ok(output) => {
+            if !output.status.success() {
+                let error = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("Failed to extract video frame: {}", error));
+            }
+        }
+        Err(e) => return Err(format!("Failed to run ffmpeg: {}", e)),
+    }
+
+    // Check if the frame was extracted
+    if !frame_path.exists() {
+        return Err("Failed to extract video frame".to_string());
+    }
+
+    // Read the image and convert to a data URL
+    let img = match image::open(&frame_path) {
+        Ok(img) => img,
+        Err(e) => return Err(format!("Failed to open extracted frame: {}", e)),
+    };
+
+    // Convert to base64
+    let mut buffer = Vec::new();
+    let mut cursor = Cursor::new(&mut buffer);
+
+    // Use JPEG format for the frame
+    if let Err(e) = img.write_to(&mut cursor, ImageOutputFormat::Jpeg(95)) {
+        return Err(format!("Failed to encode JPEG: {}", e));
+    }
+
+    // Encode as base64
+    let base64_string = general_purpose::STANDARD.encode(&buffer);
+
+    // Return as data URL
+    let result = Ok(format!("data:image/jpeg;base64,{}", base64_string));
+
+    // Clean up the temporary file
+    let _ = fs::remove_file(&frame_path);
+
+    result
+}
+
 /// Reset the trim progress (called when starting a new trim)
 #[tauri::command]
 pub fn reset_trim_progress() -> Result<(), String> {
@@ -644,9 +730,10 @@ pub async fn trim_video(
     let progress_file = temp_progress_dir.path().join("progress.txt");
 
     // Log the ffmpeg command we're about to run with detailed parameters
+    // Updated command string to reflect the simpler direct approach
     let cmd_string = format!(
-        "ffmpeg -v verbose -ss {} -i \"{}\" -t {} -c:v {} -crf {} -preset {} -c:a aac -b:a 192k -pix_fmt yuv420p -movflags +faststart -progress {} {}",
-        start_time, path, duration, video_codec, crf_value, preset, progress_file.display(), temp_path.display()
+        "ffmpeg -v verbose -i \"{}\" -ss {} -t {} -c:v {} -crf {} -preset {} -c:a aac -b:a 192k -pix_fmt yuv420p -movflags +faststart -fflags +genpts -progress {} {}",
+        path, start_time, duration, video_codec, crf_value, preset, progress_file.display(), temp_path.display()
     );
     
     // Print detailed diagnostic info to console
@@ -669,14 +756,14 @@ pub async fn trim_video(
     let stderr_file_clone = stderr_file.try_clone()
         .map_err(|e| format!("Failed to clone stderr file: {}", e))?;
     
-    // Launch FFmpeg with progress output and capture stderr
+    // Go back to a simpler but more direct approach with quality settings
     let child = Command::new("ffmpeg")
         .arg("-v") // Verbose mode for more detailed output
         .arg("verbose")
-        .arg("-ss")
-        .arg(start_time.to_string())
         .arg("-i")
         .arg(&path)
+        .arg("-ss")
+        .arg(start_time.to_string())
         .arg("-t")
         .arg(duration.to_string())
         .arg("-c:v")
@@ -693,6 +780,9 @@ pub async fn trim_video(
         .arg("yuv420p") // Standard pixel format for wide compatibility
         .arg("-movflags")
         .arg("+faststart") // Optimize for web playback
+        // Fix: remove -copyts 0 (which is causing the error)
+        .arg("-fflags")
+        .arg("+genpts") // Generate presentation timestamps
         .arg("-progress")
         .arg(&progress_file) // Write progress info to file
         .arg(&temp_path)

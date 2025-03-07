@@ -15,7 +15,7 @@ interface CaptionEditorProps {
   mediaFiles: MediaFile[];
   handleCaptionChange: (value: string) => void;
   saveCaption: () => Promise<void>;
-  handleGenerateCurrentCaption: () => void;
+  handleGenerateCurrentCaption: (currentVideoTime?: number) => void;
   handleRemoveFile?: (file: MediaFile) => void;
   handleFileUpdate?: (oldFile: MediaFile, newPath: string) => void;
 }
@@ -61,6 +61,25 @@ export function CaptionEditor({
       handleFileUpdate(currentFile, newFilePath);
     } else {
       toast.error("Failed to update file: missing handler");
+    }
+  };
+  
+  // Handler for generating caption with current video time
+  const handleGenerateCaption = () => {
+    // If it's a video, get the current time from the video player
+    if (currentFile && (currentFile.type === 'video' || currentFile.file_type === 'video')) {
+      const videoElement = document.getElementById('main-video-player') as HTMLVideoElement;
+      // If spotlight is open, use that video player instead
+      const spotlightVideo = document.getElementById('spotlight-video-player') as HTMLVideoElement;
+      
+      // Use whichever video element is available and playing
+      const currentTime = spotlightVideo?.currentTime || videoElement?.currentTime;
+      
+      // Call the caption generator with the current time
+      handleGenerateCurrentCaption(currentTime);
+    } else {
+      // For images, just call the handler directly
+      handleGenerateCurrentCaption();
     }
   };
     
@@ -126,7 +145,7 @@ export function CaptionEditor({
               variant="default" 
               size="sm" 
               className="h-8"
-              onClick={handleGenerateCurrentCaption}
+              onClick={handleGenerateCaption}
               disabled={isProcessing || !currentFile}
             >
               {isProcessing && (

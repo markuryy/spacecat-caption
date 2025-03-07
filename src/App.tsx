@@ -324,22 +324,43 @@ function App() {
   }, [currentFile, mediaFiles, removeFile, handleFileSelect]);
 
   // Generate caption for current file
-  const handleGenerateCurrentCaption = () => {
+  const handleGenerateCurrentCaption = (currentVideoTime?: number) => {
     if (!currentFile) return;
     
     setIsProcessing(true);
     
-    // Call the API to generate a caption
-    toast.promise(
-      generateCaption(
+    const captionProcess = async () => {
+      let videoFrameUrl: string | undefined;
+      
+      // If it's a video, extract the current frame
+      if (currentFile.type === 'video' || currentFile.file_type === 'video') {
+        try {
+          // If a specific time was provided, use that, otherwise use the default first frame
+          const time = typeof currentVideoTime === 'number' ? currentVideoTime : undefined;
+          videoFrameUrl = await import('./lib/media').then(
+            module => module.extractVideoFrame(currentFile.path, time)
+          );
+        } catch (error) {
+          console.error("Failed to extract video frame:", error);
+          // Continue without the frame if extraction fails
+        }
+      }
+      
+      // Call the API to generate a caption
+      return generateCaption(
         settings.apiUrl,
         settings.apiKey,
         settings.captionPrompt,
         currentFile.path,
         settings.model,
         settings.imageDetail,
-        settings.useDetailParameter
-      ),
+        settings.useDetailParameter,
+        videoFrameUrl
+      );
+    };
+    
+    toast.promise(
+      captionProcess(),
       {
         loading: `Generating caption using ${settings.model}...`,
         success: (caption) => {

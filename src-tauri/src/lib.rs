@@ -10,7 +10,7 @@ use file_system::commands::{
 };
 
 use api::commands::{generate_caption, generate_captions};
-use media::commands::{crop_video, get_media_thumbnail, get_trim_progress, reset_trim_progress, save_cropped_image, trim_video};
+use media::commands::{crop_video, extract_video_frame, get_media_thumbnail, get_trim_progress, reset_trim_progress, save_cropped_image, trim_video};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,6 +44,7 @@ pub fn run() {
             save_cropped_image,
             reset_trim_progress,
             get_trim_progress,
+            extract_video_frame,
             // API commands
             generate_caption,
             generate_captions,
