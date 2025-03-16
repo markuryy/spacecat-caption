@@ -6,7 +6,7 @@
 
 A desktop application for generating and managing captions for images and videos using AI vision models. This is a Rust rewrite of [spacecat sage](https://github.com/markuryy/spacecat-sage), built with Tauri, React, and TypeScript.
 
-![spacecat caption demo](public/demo.png)
+![cover](public/cover.png)
 
 ## Features
 
@@ -21,6 +21,10 @@ A desktop application for generating and managing captions for images and videos
   - Extract frames from videos for captioning
 - **Project Management**: Create, save, and manage multiple captioning projects
 - **Export Options**: Export your captioned media as a directory or ZIP file
+
+## Screenshot
+
+![spacecat caption demo](public/demo.png)
 
 ## Compared to spacecat sage
 
