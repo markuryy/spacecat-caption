@@ -78,15 +78,15 @@ jobs:
       # Verify Certificate
       - name: Verify Certificate
         run: |
-          # Get the first codesigning identity without filtering by "Apple Development"
-          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | head -1)
+          # Look specifically for the Developer ID Application certificate
+          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           # Extract certificate ID if it exists
           if [[ -n "$CERT_INFO" ]]; then
             CERT_ID=$(echo "$CERT_INFO" | sed -E 's/.*[^A-F0-9]([A-F0-9]{40})[^A-F0-9].*$/\1/')
             echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
             echo "Certificate found: $CERT_INFO"
           else
-            echo "No codesigning certificate found in keychain"
+            echo "No Developer ID Application certificate found in keychain"
             exit 1
           fi
           
