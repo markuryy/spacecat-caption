@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "spacecat-caption",
+  "productName": "spacecat caption",
   "version": "0.1.2",
   "identifier": "com.spacecat-caption.app",
   "build": {
