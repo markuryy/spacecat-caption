@@ -26,19 +26,40 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          # Decode certificate from base64
+          echo "Decoding certificate..."
           echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+          
+          # Create and configure keychain
+          echo "Creating keychain..."
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          
+          # Import certificate
+          echo "Importing certificate..."
           security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          
+          # Set keychain permissions
+          echo "Setting keychain permissions..."
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          
+          # List imported certificates for debugging
+          echo "Listing all imported certificates:"
           security find-identity -v -p codesigning build.keychain
       - name: Verify Certificate
         run: |
-          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Apple Development")
-          CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
-          echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
-          echo "Certificate imported."
+          # Get the first codesigning identity without filtering by "Apple Development"
+          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | head -1)
+          # Extract certificate ID if it exists
+          if [[ -n "$CERT_INFO" ]]; then
+            CERT_ID=$(echo "$CERT_INFO" | sed -E 's/.*[^A-F0-9]([A-F0-9]{40})[^A-F0-9].*$/\1/')
+            echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
+            echo "Certificate found: $CERT_INFO"
+          else
+            echo "No codesigning certificate found in keychain"
+            exit 1
+          fi
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
