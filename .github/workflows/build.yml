@@ -7,7 +7,6 @@ on:
 
 jobs:
   build-macos:
-    needs: prepare
     strategy:
       matrix:
         include:
@@ -20,6 +19,7 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
     steps:
+      - uses: actions/checkout@v4
       - name: Import Apple Developer Certificate
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
