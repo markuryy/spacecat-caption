@@ -7,7 +7,6 @@ import { FolderOpen, FileText, RefreshCw, ImageIcon, Video, Wand2, Clock, ArrowR
 import { MediaFile, ProjectDirectory } from "@/lib/fs";
 import { toast } from "sonner";
 import { useProjectManagement } from "@/hooks/useProjectManagement";
-import { Separator } from './ui/separator';
 
 interface FileSidebarProps {
   sourceDirectory: string | null;

@@ -43,17 +43,17 @@ export async function loadSettings(): Promise<AppSettings> {
     let needsUpdate = false;
     
     if (settings && !('model' in settings)) {
-      settings.model = DEFAULT_SETTINGS.model;
+      (settings as AppSettings).model = DEFAULT_SETTINGS.model;
       needsUpdate = true;
     }
     
     if (settings && !('imageDetail' in settings)) {
-      settings.imageDetail = DEFAULT_SETTINGS.imageDetail;
+      (settings as AppSettings).imageDetail = DEFAULT_SETTINGS.imageDetail;
       needsUpdate = true;
     }
     
     if (settings && !('useDetailParameter' in settings)) {
-      settings.useDetailParameter = DEFAULT_SETTINGS.useDetailParameter;
+      (settings as AppSettings).useDetailParameter = DEFAULT_SETTINGS.useDetailParameter;
       needsUpdate = true;
     }
     

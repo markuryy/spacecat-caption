@@ -238,7 +238,7 @@ function App() {
   };
   
   // Handle file update from media editors (crop/trim)
-  const handleFileUpdate = useCallback(async (oldFile: MediaFile, newPath: string) => {
+  const handleFileUpdate = useCallback(async (oldFile: MediaFile, _newPath: string) => {
     try {
       // Since we're now overwriting the original file, we don't need to change the path
       // However, we do need to refresh the file's thumbnail

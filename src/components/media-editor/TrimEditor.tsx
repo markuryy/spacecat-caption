@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Scissors, Check, X, GripHorizontal } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 
@@ -20,7 +19,7 @@ export function TrimEditor({ src, filePath, onSave, disabled = false }: TrimEdit
   const [duration, setDuration] = useState(0);
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(100);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const setIsPlaying = useState(false)[1];
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isDragging, setIsDragging] = useState<'start' | 'end' | null>(null);
@@ -131,7 +130,7 @@ export function TrimEditor({ src, filePath, onSave, disabled = false }: TrimEdit
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleMouseDown = (handle: 'start' | 'end') => (e: React.MouseEvent) => {
+  const handleMouseDown = (handle: 'start' | 'end') => () => {
     setIsDragging(handle);
   };
 
