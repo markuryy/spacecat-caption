@@ -7,7 +7,10 @@ on:
 
 jobs:
   build-macos:
+    permissions:
+      contents: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - args: '--target aarch64-apple-darwin'
@@ -20,6 +23,30 @@ jobs:
       APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      
+      # Set up Bun
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+          
+      # Install Rust with proper targets for macOS
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          
+      # Cache Rust dependencies for faster builds
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+      
+      # Install frontend dependencies
+      - name: Install frontend dependencies
+        run: bun install
+        
+      # Import Apple Developer Certificate
       - name: Import Apple Developer Certificate
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -47,6 +74,8 @@ jobs:
           # List imported certificates for debugging
           echo "Listing all imported certificates:"
           security find-identity -v -p codesigning build.keychain
+          
+      # Verify Certificate
       - name: Verify Certificate
         run: |
           # Get the first codesigning identity without filtering by "Apple Development"
@@ -60,11 +89,16 @@ jobs:
             echo "No codesigning certificate found in keychain"
             exit 1
           fi
-      - uses: tauri-apps/tauri-action@v0
+          
+      # Run Tauri build with verbose logging
+      - name: Build with Tauri
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
         with:
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --verbose
