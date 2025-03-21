@@ -9,7 +9,7 @@ use file_system::commands::{
     register_working_directory, select_directory, select_export_directory, write_caption_file,
 };
 
-use api::commands::{generate_caption, generate_captions};
+use api::commands::{generate_caption, generate_captions, generate_gemini_caption, generate_gemini_captions};
 use media::commands::{crop_video, extract_video_frame, get_media_thumbnail, get_trim_progress, reset_trim_progress, save_cropped_image, trim_video};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -48,6 +48,8 @@ pub fn run() {
             // API commands
             generate_caption,
             generate_captions,
+            generate_gemini_caption,
+            generate_gemini_captions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

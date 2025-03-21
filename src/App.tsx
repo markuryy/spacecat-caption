@@ -4,7 +4,13 @@ import { toast } from "sonner";
 import { useFileSystem } from "@/hooks/useFileSystem";
 import { useSettings } from "@/hooks/useSettings";
 import { MediaFile } from "@/lib/fs";
-import { generateCaption, generateCaptions } from "@/lib/api";
+import { 
+  generateCaption, 
+  generateCaptions, 
+  generateGeminiCaption, 
+  generateGeminiCaptions,
+  generateCaptionWithPreferredProvider
+} from "@/lib/api";
 
 // Import components
 import { AppHeader } from "@/components/AppHeader";
@@ -161,21 +167,34 @@ function App() {
     setIsProcessing(true);
     
     // Get the paths of the selected files
-    const imagePaths = selectedFiles.map(file => file.path);
+    const mediaPaths = selectedFiles.map(file => file.path);
     
-    // Call the API to generate captions
+    // Determine which API to use based on settings
+    const useGemini = settings.preferredProvider === 'gemini';
+    const modelName = useGemini ? settings.geminiModel : settings.model;
+    
+    // Call the appropriate API to generate captions
+    const captionPromise = useGemini
+      ? generateGeminiCaptions(
+          settings.geminiApiKey,
+          settings.captionPrompt,
+          mediaPaths,
+          settings.geminiSystemInstruction
+        )
+      : generateCaptions(
+          settings.apiUrl,
+          settings.apiKey,
+          settings.captionPrompt,
+          mediaPaths,
+          settings.model,
+          settings.imageDetail,
+          settings.useDetailParameter
+        );
+    
     toast.promise(
-      generateCaptions(
-        settings.apiUrl,
-        settings.apiKey,
-        settings.captionPrompt,
-        imagePaths,
-        settings.model,
-        settings.imageDetail,
-        settings.useDetailParameter
-      ),
+      captionPromise,
       {
-        loading: `Generating captions for ${selectedFiles.length} files using ${settings.model}...`,
+        loading: `Generating captions for ${selectedFiles.length} files using ${modelName}...`,
         success: (results) => {
           // Update the captions for each file
           results.forEach(([path, caption]) => {
@@ -331,9 +350,10 @@ function App() {
     
     const captionProcess = async () => {
       let videoFrameUrl: string | undefined;
+      const isVideo = currentFile.type === 'video' || currentFile.file_type === 'video';
       
-      // If it's a video, extract the current frame
-      if (currentFile.type === 'video' || currentFile.file_type === 'video') {
+      // If it's a video and we're using OpenAI, extract the current frame
+      if (isVideo && (!settings.useGeminiForVideos || settings.preferredProvider === 'openai')) {
         try {
           // If a specific time was provided, use that, otherwise use the default first frame
           const time = typeof currentVideoTime === 'number' ? currentVideoTime : undefined;
@@ -346,23 +366,26 @@ function App() {
         }
       }
       
-      // Call the API to generate a caption
-      return generateCaption(
-        settings.apiUrl,
-        settings.apiKey,
-        settings.captionPrompt,
+      // Call the API to generate a caption using the preferred provider
+      return generateCaptionWithPreferredProvider(
         currentFile.path,
-        settings.model,
-        settings.imageDetail,
-        settings.useDetailParameter,
+        settings,
+        isVideo,
         videoFrameUrl
       );
     };
     
+    // Determine which model to show in the loading message
+    const modelName = settings.preferredProvider === 'gemini' || 
+                     (settings.useGeminiForVideos && 
+                      (currentFile.type === 'video' || currentFile.file_type === 'video'))
+                     ? settings.geminiModel
+                     : settings.model;
+    
     toast.promise(
       captionProcess(),
       {
-        loading: `Generating caption using ${settings.model}...`,
+        loading: `Generating caption using ${modelName}...`,
         success: (caption) => {
           setCaption(caption);
           setCaptionModified(true);

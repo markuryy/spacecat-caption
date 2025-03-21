@@ -1,24 +1,45 @@
 import { LazyStore } from '@tauri-apps/plugin-store';
 
 export type ImageDetailLevel = 'auto' | 'low' | 'high';
+export type ApiProvider = 'openai' | 'gemini';
 
 export interface AppSettings {
+  // OpenAI settings
   apiUrl: string;
   apiKey: string;
   captionPrompt: string;
   model: string;
   imageDetail: ImageDetailLevel;
   useDetailParameter: boolean;
+  
+  // Gemini settings
+  geminiApiKey: string;
+  geminiModel: string;
+  geminiSystemInstruction: string;
+  
+  // Provider selection
+  preferredProvider: ApiProvider;
+  useGeminiForVideos: boolean;
 }
 
 // Default settings
 export const DEFAULT_SETTINGS: AppSettings = {
+  // OpenAI defaults
   apiUrl: 'https://api.openai.com/v1/chat/completions',
   apiKey: '',
   captionPrompt: 'Describe this image in detail:',
   model: 'gpt-4o-2024-05-13',
   imageDetail: 'auto',
-  useDetailParameter: true
+  useDetailParameter: true,
+  
+  // Gemini defaults
+  geminiApiKey: '',
+  geminiModel: 'gemini-2.0-flash',
+  geminiSystemInstruction: 'You are an image and video captioner. Do not mention the medium (e.g. image, video) in the caption itself, simply describe it visually. Return only the caption in json format.',
+  
+  // Provider selection defaults
+  preferredProvider: 'openai',
+  useGeminiForVideos: true
 };
 
 // Create a lazy store for settings
@@ -54,6 +75,32 @@ export async function loadSettings(): Promise<AppSettings> {
     
     if (settings && !('useDetailParameter' in settings)) {
       (settings as AppSettings).useDetailParameter = DEFAULT_SETTINGS.useDetailParameter;
+      needsUpdate = true;
+    }
+    
+    // Add Gemini settings if they don't exist
+    if (settings && !('geminiApiKey' in settings)) {
+      (settings as AppSettings).geminiApiKey = DEFAULT_SETTINGS.geminiApiKey;
+      needsUpdate = true;
+    }
+    
+    if (settings && !('geminiModel' in settings)) {
+      (settings as AppSettings).geminiModel = DEFAULT_SETTINGS.geminiModel;
+      needsUpdate = true;
+    }
+    
+    if (settings && !('geminiSystemInstruction' in settings)) {
+      (settings as AppSettings).geminiSystemInstruction = DEFAULT_SETTINGS.geminiSystemInstruction;
+      needsUpdate = true;
+    }
+    
+    if (settings && !('preferredProvider' in settings)) {
+      (settings as AppSettings).preferredProvider = DEFAULT_SETTINGS.preferredProvider;
+      needsUpdate = true;
+    }
+    
+    if (settings && !('useGeminiForVideos' in settings)) {
+      (settings as AppSettings).useGeminiForVideos = DEFAULT_SETTINGS.useGeminiForVideos;
       needsUpdate = true;
     }
     
@@ -100,4 +147,4 @@ export async function updateSetting<K extends keyof AppSettings>(
     console.error(`Failed to update setting ${key}:`, error);
     throw error;
   }
-} 
+}
