@@ -13,7 +13,8 @@ import {
   getCaptionPath,
   selectExportDirectory,
   exportDirectory,
-  deleteMediaFile
+  deleteMediaFile,
+  duplicateMediaFile
 } from '../lib/fs';
 import { getMediaThumbnail } from '../lib/media';
 
@@ -54,11 +55,14 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
       // Load the media files first without thumbnails
       const files = await listDirectoryFiles(duplicatedDir);
       
+      // Sort files alphabetically by name before setting state
+      const sortedFiles = [...files].sort((a, b) => a.name.localeCompare(b.name));
+      
       // Show files immediately without waiting for thumbnails
-      setMediaFiles(files);
+      setMediaFiles(sortedFiles);
       
       // Start thumbnail generation in the background
-      generateThumbnails(files);
+      generateThumbnails(sortedFiles);
       
       return { sourceDirectory: selectedDir, workingDirectory: duplicatedDir, files };
     } catch (err) {
@@ -125,11 +129,14 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
       
       const files = await listDirectoryFiles(workingDirectory);
       
+      // Sort files alphabetically by name before setting state
+      const sortedFiles = [...files].sort((a, b) => a.name.localeCompare(b.name));
+      
       // Show files immediately without waiting for thumbnails
-      setMediaFiles(files);
+      setMediaFiles(sortedFiles);
       
       // Start thumbnail generation in the background
-      generateThumbnails(files);
+      generateThumbnails(sortedFiles);
       
       return files;
     } catch (err) {
@@ -288,11 +295,14 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
       // Load the media files without thumbnails
       const files = await listDirectoryFiles(projectPath);
       
+      // Sort files alphabetically by name before setting state
+      const sortedFiles = [...files].sort((a, b) => a.name.localeCompare(b.name));
+      
       // Show files immediately without waiting for thumbnails
-      setMediaFiles(files);
+      setMediaFiles(sortedFiles);
       
       // Start thumbnail generation in the background
-      generateThumbnails(files);
+      generateThumbnails(sortedFiles);
       
       return { sourceDirectory: projectName, workingDirectory: projectPath, files };
     } catch (err) {
@@ -303,6 +313,47 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
       setIsLoading(false);
     }
   }, [generateThumbnails]);
+
+  /**
+   * Duplicate a media file and its caption
+   * @param mediaFile The media file to duplicate
+   * @returns Promise with the new MediaFile object
+   */
+  const duplicateFile = useCallback(async (mediaFile: MediaFile): Promise<MediaFile | null> => {
+    try {
+      // Duplicate the file
+      const newFile = await duplicateMediaFile(mediaFile.path);
+      
+      // Add frontend-specific properties
+      const enhancedFile: MediaFile = {
+        ...newFile,
+        type: newFile.file_type === 'image' ? 'image' : 'video',
+        selected: false,
+        refreshToken: Date.now() // Add a refresh token to ensure we get a fresh thumbnail
+      };
+      
+      // Generate thumbnail for the new file before adding to state
+      let thumbnail: string | undefined = undefined;
+      try {
+        thumbnail = await getMediaThumbnail(enhancedFile.path, 100);
+        console.log("Generated thumbnail for duplicated file:", enhancedFile.name);
+      } catch (err) {
+        // Log error instead of silent fail
+        console.error("Failed to generate thumbnail for duplicated file:", err);
+      }
+      
+      // Add the file with thumbnail to state and sort alphabetically
+      setMediaFiles(prev => 
+        [...prev, {...enhancedFile, thumbnail}].sort((a, b) => a.name.localeCompare(b.name))
+      );
+      
+      return enhancedFile;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+      return null;
+    }
+  }, []);
 
   return {
     sourceDirectory,
@@ -320,6 +371,7 @@ export function useFileSystem({ workingDirName = 'spacecat-working' }: UseFileSy
     getMediaUrl,
     exportWorkingDirectory,
     generateThumbnails,
-    removeFile
+    removeFile,
+    duplicateFile
   };
-} 
+}

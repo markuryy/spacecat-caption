@@ -4,7 +4,7 @@ mod file_system;
 mod media;
 
 use file_system::commands::{
-    delete_media_file, delete_project_directory, duplicate_directory, export_directory,
+    delete_media_file, delete_project_directory, duplicate_directory, duplicate_media_file, export_directory,
     list_directory_files, list_project_directories, open_project_directory, read_caption_file,
     register_working_directory, select_directory, select_export_directory, write_caption_file,
 };
@@ -37,6 +37,7 @@ pub fn run() {
             delete_project_directory,
             open_project_directory,
             delete_media_file,
+            duplicate_media_file,
             // Media commands
             get_media_thumbnail,
             crop_video,

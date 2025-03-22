@@ -28,3 +28,5 @@ docs/**
 .claude/**
 my.variables
 example.variables
+cline_docs/**
+unused-warnings.temp.txt

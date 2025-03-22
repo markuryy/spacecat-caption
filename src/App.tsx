@@ -34,7 +34,8 @@ function App() {
     getMediaUrl,
     updateFileSelection,
     exportWorkingDirectory,
-    removeFile
+    removeFile,
+    duplicateFile
   } = useFileSystem();
   
   const {
@@ -452,6 +453,7 @@ function App() {
           handleFileSelect={handleFileSelect}
           updateFileSelection={updateFileSelection}
           handleGenerateCaptions={handleGenerateCaptions}
+          duplicateFile={duplicateFile}
         />
         
         {/* Main content area */}

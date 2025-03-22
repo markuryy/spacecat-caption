@@ -3,7 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FolderOpen, FileText, RefreshCw, ImageIcon, Video, Wand2, Clock, ArrowRight } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { FolderOpen, FileText, RefreshCw, ImageIcon, Video, Wand2, Clock, ArrowRight, Copy } from "lucide-react";
 import { MediaFile, ProjectDirectory } from "@/lib/fs";
 import { toast } from "sonner";
 import { useProjectManagement } from "@/hooks/useProjectManagement";
@@ -28,6 +34,7 @@ interface FileSidebarProps {
   handleFileSelect: (file: MediaFile) => void;
   updateFileSelection: (fileId: string, selected: boolean) => void;
   handleGenerateCaptions: () => void;
+  duplicateFile?: (file: MediaFile) => Promise<MediaFile | null>;
 }
 
 export function FileSidebar({
@@ -41,7 +48,8 @@ export function FileSidebar({
   loadExistingProject,
   handleFileSelect,
   updateFileSelection,
-  handleGenerateCaptions
+  handleGenerateCaptions,
+  duplicateFile
 }: FileSidebarProps) {
   const [fileFilter, setFileFilter] = useState<'all' | 'captioned' | 'uncaptioned'>('all');
 
@@ -148,56 +156,96 @@ export function FileSidebar({
                         <p>No files found</p>
                       </div>
                     ) : (
-                      filteredFiles.map((file) => (
-                        <div 
-                          key={file.id}
-                          className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${
-                            currentFile?.id === file.id ? 'bg-secondary/40' : 'hover:bg-secondary/20'
-                          }`}
-                          onClick={() => handleFileSelect(file)}
-                        >
-                          <Checkbox 
-                            checked={file.selected} 
-                            onCheckedChange={(checked) => {
-                              handleCheckboxChange(file, checked as boolean);
-                              // Prevent the click from selecting the file
-                              event?.stopPropagation();
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                      filteredFiles.map((file) => {
+                        // Handle file duplication
+                        const handleDuplicate = async () => {
+                          if (!duplicateFile) return;
                           
-                          <div className="h-12 w-12 rounded overflow-hidden flex-shrink-0 bg-white flex items-center justify-center">
-                            {file.thumbnail ? (
-                              <img 
-                                src={`${file.thumbnail}${file.refreshToken ? `?t=${file.refreshToken}` : ''}`}
-                                alt={file.name} 
-                                className="h-full w-full object-cover"
-                                key={`thumb-${file.id}-${file.refreshToken || 'default'}`}
-                              />
-                            ) : file.type === 'image' || file.file_type === 'image' ? (
-                              <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                            ) : (
-                              <Video className="h-6 w-6 text-muted-foreground" />
-                            )}
-                          </div>
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1">
-                              {file.type === 'image' || file.file_type === 'image' ? (
-                                <ImageIcon className="h-3 w-3 text-muted-foreground" />
-                              ) : (
-                                <Video className="h-3 w-3 text-muted-foreground" />
-                              )}
-                              <p className="text-sm truncate">{file.name}</p>
-                            </div>
-                            {file.has_caption && (
-                              <p className="text-xs text-muted-foreground truncate">
-                                Has caption
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))
+                          try {
+                            const newFile = await duplicateFile(file);
+                            if (!newFile) {
+                              toast.error("Failed to duplicate file");
+                            }
+                          } catch (err) {
+                            toast.error(`Error duplicating file: ${err}`);
+                          }
+                        };
+                        
+                        return (
+                          <ContextMenu key={file.id}>
+                            <ContextMenuTrigger>
+                              <div 
+                                className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${
+                                  currentFile?.id === file.id ? 'bg-secondary/40' : 'hover:bg-secondary/20'
+                                }`}
+                                onClick={() => handleFileSelect(file)}
+                              >
+                                <Checkbox 
+                                  checked={file.selected} 
+                                  onCheckedChange={(checked) => {
+                                    handleCheckboxChange(file, checked as boolean);
+                                    // Prevent the click from selecting the file
+                                    event?.stopPropagation();
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                
+                                <div className="h-12 w-12 rounded overflow-hidden flex-shrink-0 bg-white flex items-center justify-center">
+                                  {file.thumbnail ? (
+                                    <img 
+                                      src={`${file.thumbnail}${file.refreshToken ? `?t=${file.refreshToken}` : ''}`}
+                                      alt={file.name} 
+                                      className="h-full w-full object-cover"
+                                      key={`thumb-${file.id}-${file.refreshToken || 'default'}`}
+                                      onError={(e) => {
+                                        // Handle image load error by replacing with fallback icon
+                                        e.currentTarget.style.display = 'none';
+                                        // Show fallback icon based on file type
+                                        const fallbackIcon = document.createElement('div');
+                                        fallbackIcon.className = 'h-full w-full flex items-center justify-center';
+                                        fallbackIcon.innerHTML = file.type === 'image' || file.file_type === 'image' 
+                                          ? '<svg class="h-6 w-6 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
+                                          : '<svg class="h-6 w-6 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M16 2v6h6"/><path d="m9.5 10.5 5 5"/><path d="m9.5 15.5 5-5"/></svg>';
+                                        e.currentTarget.parentNode?.appendChild(fallbackIcon);
+                                      }}
+                                    />
+                                  ) : file.type === 'image' || file.file_type === 'image' ? (
+                                    <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                                  ) : (
+                                    <Video className="h-6 w-6 text-muted-foreground" />
+                                  )}
+                                </div>
+                                
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1">
+                                    {file.type === 'image' || file.file_type === 'image' ? (
+                                      <ImageIcon className="h-3 w-3 text-muted-foreground" />
+                                    ) : (
+                                      <Video className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                    <p className="text-sm truncate">{file.name}</p>
+                                  </div>
+                                  {file.has_caption && (
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      Has caption
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem 
+                                onClick={handleDuplicate}
+                                disabled={!duplicateFile}
+                                className="flex items-center gap-2"
+                              >
+                                <Copy className="h-4 w-4" />
+                                <span>Duplicate</span>
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
+                        );
+                      })
                     )}
                   </div>
                 </ScrollArea>

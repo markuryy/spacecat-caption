@@ -3,7 +3,7 @@ use fs_extra::dir::{get_size, CopyOptions};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
@@ -423,6 +423,111 @@ pub async fn open_project_directory(app: AppHandle, path: String) -> Result<(), 
     app.opener()
         .open_path(path, None::<&str>)
         .map_err(|e| format!("Failed to open directory: {}", e))
+}
+
+/// Duplicate a media file and its associated caption file
+#[tauri::command]
+pub async fn duplicate_media_file(path: String) -> Result<MediaFile, String> {
+    let file_path = Path::new(&path);
+    
+    // Validate the file exists
+    if !file_path.exists() {
+        return Err(format!("File does not exist: {}", path));
+    }
+
+    if !file_path.is_file() {
+        return Err(format!("Path is not a file: {}", path));
+    }
+    
+    // Get file information
+    let file_dir = file_path.parent().ok_or_else(|| "Invalid file path".to_string())?;
+    let file_stem = file_path.file_stem().ok_or_else(|| "Invalid file name".to_string())?;
+    let file_ext = file_path.extension().ok_or_else(|| "Invalid file extension".to_string())?;
+    
+    // Check if a caption file exists
+    let caption_path = file_path.with_extension("txt");
+    let has_caption = caption_path.exists();
+    
+    // Generate a new unique filename with suffix
+    let mut counter = 1;
+    let mut new_file_path: PathBuf;
+    let mut new_caption_path: PathBuf;
+    
+    loop {
+        let new_name = format!("{}_{}.{}", file_stem.to_string_lossy(), counter, file_ext.to_string_lossy());
+        new_file_path = file_dir.join(&new_name);
+        
+        // Check if the new file already exists
+        if !new_file_path.exists() {
+            // If we have a caption, also check if the new caption file would exist
+            if has_caption {
+                new_caption_path = new_file_path.with_extension("txt");
+                if !new_caption_path.exists() {
+                    break; // Both file paths are available
+                }
+            } else {
+                break; // Just the media file path is available
+            }
+        }
+        
+        // Increment counter and try again
+        counter += 1;
+    }
+    
+    // Copy the media file
+    fs::copy(file_path, &new_file_path).map_err(|e| format!("Failed to copy media file: {}", e))?;
+    
+    // Copy the caption file if it exists
+    let new_has_caption = if has_caption {
+        let new_caption_path = new_file_path.with_extension("txt");
+        fs::copy(&caption_path, &new_caption_path).map_err(|e| format!("Failed to copy caption file: {}", e))?;
+        true
+    } else {
+        false
+    };
+    
+    // Determine file type
+    let file_type = if let Some(ext) = file_path.extension() {
+        let ext_str = ext.to_string_lossy().to_lowercase();
+        if ["jpg", "jpeg", "png", "gif", "webp"].contains(&ext_str.as_str()) {
+            "image"
+        } else if ["mp4", "webm", "mov", "avi"].contains(&ext_str.as_str()) {
+            "video"
+        } else {
+            "unknown"
+        }
+    } else {
+        "unknown"
+    };
+    
+    // Get the new file name
+    let new_name = new_file_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    
+    // Get the new path as a string
+    let new_path_str = new_file_path.to_string_lossy().to_string();
+    
+    // Get the relative path from the directory
+    let dir_path = file_dir.to_path_buf();
+    let relative_path = new_file_path
+        .strip_prefix(&dir_path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    
+    // Create a unique ID
+    let id = format!("{}-{}", file_type, new_name);
+    
+    // Return the new MediaFile
+    Ok(MediaFile {
+        id,
+        name: new_name,
+        path: new_path_str,
+        relative_path,
+        file_type: file_type.to_string(),
+        has_caption: new_has_caption,
+    })
 }
 
 /// Delete a media file and its associated caption file

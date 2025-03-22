@@ -53,6 +53,13 @@ export function MediaViewer({
                 alt={currentFile.name}
                 className="max-w-full max-h-full object-contain rounded-md"
                 key={`img-${currentFile.id}-${mediaTimestamp}`} // Key change forces re-render
+                onError={(e) => {
+                  console.error(`Failed to load image: ${currentFile.name}`);
+                  // Retry loading the image with a new timestamp
+                  setTimeout(() => {
+                    setMediaTimestamp(Date.now());
+                  }, 500);
+                }}
               />
             ) : (
               <video 
@@ -62,6 +69,9 @@ export function MediaViewer({
                 key={`video-${currentFile.id}-${mediaTimestamp}`} // Key change forces re-render
                 onClick={(e) => e.stopPropagation()} // Prevent spotlight from opening when clicking video controls
                 id="main-video-player"
+                onError={(e) => {
+                  console.error(`Failed to load video: ${currentFile.name}`);
+                }}
               />
             )}
           </div>
@@ -140,6 +150,26 @@ function Spotlight({
               className="max-w-[90%] max-h-[90%] object-contain"
               key={`spotlight-img-${currentFile.id}-${mediaTimestamp}`}
               onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the image
+              onError={(e) => {
+                console.error(`Failed to load spotlight image: ${currentFile.name}`);
+                // Create a fallback element with error message
+                const container = e.currentTarget.parentElement;
+                if (container) {
+                  const fallback = document.createElement('div');
+                  fallback.className = 'flex flex-col items-center justify-center text-white';
+                  fallback.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-4">
+                      <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                      <circle cx="9" cy="9" r="2"/>
+                      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                    </svg>
+                    <p>Failed to load image</p>
+                    <p class="text-sm text-gray-400 mt-2">${currentFile.name}</p>
+                  `;
+                  e.currentTarget.style.display = 'none';
+                  container.appendChild(fallback);
+                }
+              }}
             />
           ) : (
             <video 
@@ -149,6 +179,27 @@ function Spotlight({
               key={`spotlight-video-${currentFile.id}-${mediaTimestamp}`}
               onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the video
               id="spotlight-video-player"
+              onError={(e) => {
+                console.error(`Failed to load spotlight video: ${currentFile.name}`);
+                // Create a fallback element with error message
+                const container = e.currentTarget.parentElement;
+                if (container) {
+                  const fallback = document.createElement('div');
+                  fallback.className = 'flex flex-col items-center justify-center text-white';
+                  fallback.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mb-4">
+                      <path d="m22 8-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/>
+                      <path d="M16 2v6h6"/>
+                      <path d="m9.5 10.5 5 5"/>
+                      <path d="m9.5 15.5 5-5"/>
+                    </svg>
+                    <p>Failed to load video</p>
+                    <p class="text-sm text-gray-400 mt-2">${currentFile.name}</p>
+                  `;
+                  e.currentTarget.style.display = 'none';
+                  container.appendChild(fallback);
+                }
+              }}
             />
           )}
 

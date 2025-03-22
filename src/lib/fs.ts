@@ -178,6 +178,15 @@ export async function openProjectDirectory(path: string): Promise<void> {
 }
 
 /**
+ * Duplicate a media file and its associated caption file
+ * @param path Path to the media file
+ * @returns Promise with the new MediaFile object
+ */
+export async function duplicateMediaFile(path: string): Promise<MediaFile> {
+  return invoke('duplicate_media_file', { path });
+}
+
+/**
  * Delete a media file and its associated caption file
  * @param path Path to the media file
  * @returns Promise that resolves when the file is deleted
