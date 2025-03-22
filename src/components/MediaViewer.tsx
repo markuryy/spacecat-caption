@@ -53,7 +53,7 @@ export function MediaViewer({
                 alt={currentFile.name}
                 className="max-w-full max-h-full object-contain rounded-md"
                 key={`img-${currentFile.id}-${mediaTimestamp}`} // Key change forces re-render
-                onError={(e) => {
+                onError={() => {
                   console.error(`Failed to load image: ${currentFile.name}`);
                   // Retry loading the image with a new timestamp
                   setTimeout(() => {
@@ -69,7 +69,7 @@ export function MediaViewer({
                 key={`video-${currentFile.id}-${mediaTimestamp}`} // Key change forces re-render
                 onClick={(e) => e.stopPropagation()} // Prevent spotlight from opening when clicking video controls
                 id="main-video-player"
-                onError={(e) => {
+                onError={() => {
                   console.error(`Failed to load video: ${currentFile.name}`);
                 }}
               />

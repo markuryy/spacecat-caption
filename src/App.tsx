@@ -5,9 +5,7 @@ import { useFileSystem } from "@/hooks/useFileSystem";
 import { useSettings } from "@/hooks/useSettings";
 import { MediaFile } from "@/lib/fs";
 import { 
-  generateCaption, 
   generateCaptions, 
-  generateGeminiCaption, 
   generateGeminiCaptions,
   generateCaptionWithPreferredProvider
 } from "@/lib/api";

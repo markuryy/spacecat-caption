@@ -1,3 +1,4 @@
+import "sonner/dist/styles.css"
 import { Toaster as Sonner, ToasterProps } from "sonner"
 
 const Toaster = ({ ...props }: ToasterProps) => {

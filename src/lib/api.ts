@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { ApiProvider, ImageDetailLevel } from './settings';
+import { ImageDetailLevel } from './settings';
 
 /**
  * Generate a caption for an image or video frame using OpenAI
