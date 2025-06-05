@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::time::Duration;
 use std::path::Path;
+use serde_json;
 
 // OpenAI API request structure
 #[derive(Serialize)]
@@ -132,11 +133,20 @@ pub async fn generate_caption(
         ));
     }
 
+    // Capture response info before parsing
+    let status = response.status();
+    let headers = response.headers().clone();
+    
     // Parse the response
     let response_body: OpenAIResponse = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse API response: {}", e))?;
+        .map_err(|e| {
+            println!("Failed to parse OpenAI API response as JSON: {}", e);
+            println!("Response status was: {}", status);
+            println!("Response headers: {:?}", headers);
+            "Failed to parse API response. This might be a network/encoding issue, the API returned non-JSON data, or there's a server error.".to_string()
+        })?;
 
     // Extract the caption
     if let Some(choice) = response_body.choices.first() {
@@ -688,8 +698,8 @@ async fn generate_gemini_caption_internal(
         .json()
         .await
         .map_err(|e| {
-            println!("Failed to parse API response: {}", e);
-            format!("Failed to parse API response: {}", e)
+            println!("Failed to parse Gemini API response as JSON: {}", e);
+            format!("Failed to parse API response: {}. This might be a network/encoding issue or the API returned non-JSON data.", e)
         })?;
     
     // Extract the caption (JSON parsing)

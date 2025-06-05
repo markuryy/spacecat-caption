@@ -31,7 +31,7 @@ image = "0.24.7"
 base64 = "0.21.5"
 tauri-plugin-dialog = "2"
 tauri-plugin-store = "2"
-reqwest = { version = "0.12.12", features = ["json", "multipart"] }
+reqwest = { version = "0.12.12", features = ["gzip", "json", "multipart"] }
 tokio = { version = "1.36.0", features = ["fs"] }
 zip = "0.6.6"
 chrono = "0.4.34"
