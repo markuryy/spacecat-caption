@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine as _};
 use image::{self, imageops::FilterType, GenericImageView, ImageOutputFormat};
 use once_cell::sync::Lazy;
@@ -206,14 +205,7 @@ fn generate_image_thumbnail(path: &Path, max_size: u32) -> Result<String, String
     let base64_string = general_purpose::STANDARD.encode(&buffer);
 
     // Return as JPEG data URL
-    let result = Ok(format!("data:image/jpeg;base64,{}", base64_string));
-
-    // Set a more detailed debug log
-    let path_display = path.display();
-
-    // No debug logging
-
-    result
+    Ok(format!("data:image/jpeg;base64,{}", base64_string))
 }
 
 /// Generate a thumbnail for a video file by extracting the first frame
@@ -615,7 +607,7 @@ pub fn reset_trim_progress() -> Result<(), String> {
 /// Now with frame-accurate re-encoding for exact trimming
 #[tauri::command]
 pub async fn trim_video(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     path: String,
     start_time: f64,
     end_time: f64,

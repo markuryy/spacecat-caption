@@ -598,11 +598,8 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<MediaFile>, S
         }
     };
 
-    let mut file_count = 0;
-
     for entry in entries {
         if let Ok(entry) = entry {
-            file_count += 1;
             let path = entry.path();
 
             // Skip directories

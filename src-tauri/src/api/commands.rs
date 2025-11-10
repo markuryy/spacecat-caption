@@ -259,10 +259,7 @@ struct GeminiFile {
 // Gemini file info response for checking file state
 #[derive(Deserialize, Debug)]
 struct GeminiFileInfo {
-    name: String,
-    uri: String,
     state: String,
-    // Other fields omitted for brevity
 }
 
 // Gemini API request structure
