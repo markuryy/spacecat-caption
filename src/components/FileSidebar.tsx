@@ -97,7 +97,6 @@ export function FileSidebar({
 
   // Determine the current selection state for the icon
   const allFilteredSelected = filteredFiles.length > 0 && filteredFiles.every(file => file.selected);
-  const someFilteredSelected = filteredFiles.some(file => file.selected);
 
   return (
     <div className="w-80 border-r border-border flex flex-col h-full">
