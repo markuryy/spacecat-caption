@@ -62,13 +62,22 @@ For other platforms, you can run the development server instead of building the 
    ```
 
 2. Install dependencies
+
+   ```bash
+   curl -fsSL https://bun.sh/install | bash     # bun
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh    # rust
+   ```
+
    ```
    cd spacecat-caption
    bun install
+   cd src-tauri
+   cargo fetch
    ```
 
 3. Run the development server
    ```
+   cd ..
    bun run tauri dev
    ```
 
