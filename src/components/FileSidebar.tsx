@@ -9,7 +9,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { FolderOpen, FileText, RefreshCw, ImageIcon, Video, Wand2, Clock, ArrowRight, Copy } from "lucide-react";
+import { FolderOpen, FileText, RefreshCw, ImageIcon, Video, Wand2, Clock, ArrowRight, Copy, CheckSquare, Square } from "lucide-react";
 import { MediaFile, ProjectDirectory } from "@/lib/fs";
 import { toast } from "sonner";
 import { useProjectManagement } from "@/hooks/useProjectManagement";
@@ -81,6 +81,23 @@ export function FileSidebar({
     if (fileFilter === 'uncaptioned') return !file.has_caption;
     return true;
   });
+
+  // Handle select all functionality
+  const handleSelectAll = () => {
+    if (filteredFiles.length === 0) return;
+    
+    // Check if all filtered files are currently selected
+    const allSelected = filteredFiles.every(file => file.selected);
+    
+    // Toggle selection for all filtered files
+    filteredFiles.forEach(file => {
+      updateFileSelection(file.id, !allSelected);
+    });
+  };
+
+  // Determine the current selection state for the icon
+  const allFilteredSelected = filteredFiles.length > 0 && filteredFiles.every(file => file.selected);
+  const someFilteredSelected = filteredFiles.some(file => file.selected);
 
   return (
     <div className="w-80 border-r border-border flex flex-col h-full">
@@ -251,20 +268,35 @@ export function FileSidebar({
                 </ScrollArea>
               </div>
               
-              {/* Generate button - Fixed at the bottom */}
+              {/* Generate button and Select All - Fixed at the bottom */}
               <div className="p-4 pb-0 border-t border-border sticky bg-background">
-                <Button 
-                  className="w-full flex items-center gap-2"
-                  onClick={handleGenerateCaptions}
-                  disabled={isProcessing || mediaFiles.filter(f => f.selected).length === 0}
-                >
-                  {isProcessing ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="h-4 w-4" />
-                  )}
-                  Generate Captions
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    className="flex-1 flex items-center gap-2"
+                    onClick={handleGenerateCaptions}
+                    disabled={isProcessing || mediaFiles.filter(f => f.selected).length === 0}
+                  >
+                    {isProcessing ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-4 w-4" />
+                    )}
+                    Generate Captions
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleSelectAll}
+                    disabled={isLoading || filteredFiles.length === 0}
+                    title={allFilteredSelected ? "Deselect All" : "Select All"}
+                  >
+                    {allFilteredSelected ? (
+                      <Square className="h-4 w-4" />
+                    ) : (
+                      <CheckSquare className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </Tabs>
