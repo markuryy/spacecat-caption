@@ -1,0 +1,71 @@
+name: 'build-windows'
+
+on: workflow_dispatch
+
+jobs:
+  build-windows:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      
+      # Set up Bun
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      ### Check if version changed
+      - name: Check version
+        id: check-version
+        run: |
+          # Get the current version
+          $CURRENT_VERSION = (Get-Content package.json | ConvertFrom-Json).version
+          Write-Output "Current version: $CURRENT_VERSION"
+          Write-Output "version=$CURRENT_VERSION" >> $env:GITHUB_OUTPUT
+          Write-Output "changed=true" >> $env:GITHUB_OUTPUT
+                
+      # Install Rust with proper targets for Windows
+      - name: Install Rust stable
+        if: steps.check-version.outputs.changed == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: 'x86_64-pc-windows-msvc'
+          
+      # Cache Rust dependencies for faster builds
+      - name: Rust cache
+        if: steps.check-version.outputs.changed == 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+      
+      # Install frontend dependencies
+      - name: Install frontend dependencies
+        if: steps.check-version.outputs.changed == 'true'
+        run: bun install
+
+      # Sync version from package.json to tauri.conf.json
+      - name: Sync version to tauri.conf.json
+        if: steps.check-version.outputs.changed == 'true'
+        run: |
+          $VERSION = "${{ steps.check-version.outputs.version }}"
+          $json = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
+          $json.version = $VERSION
+          $json | ConvertTo-Json -Depth 100 | Set-Content src-tauri/tauri.conf.json
+          Write-Output "Updated tauri.conf.json to version $VERSION"
+
+      # Run Tauri build with verbose logging
+      - name: Build with Tauri
+        if: steps.check-version.outputs.changed == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target x86_64-pc-windows-msvc --verbose
+          tagName: v${{ steps.check-version.outputs.version }}
+          releaseName: "spacecat-caption v${{ steps.check-version.outputs.version }}"
+          releaseDraft: false
+          prerelease: false
